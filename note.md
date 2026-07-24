@@ -1,0 +1,274 @@
+# SYNC_Motion 作業ノート
+
+作業再開時に最初に確認する開発メモ。現在の仕様、共通ルール、ビルド方法をここへ置く。
+
+- 利用者向けの概要、導入、配置、操作説明は、公開準備時に `README.md` へ分ける。
+- 完了済みの実装経緯、検証結果、日付付き履歴が増えた場合は `HISTORY.md` へ分ける。
+- 実装途中の細かな試行錯誤を逐次追記せず、方針または検証結果が確定した時点で更新する。
+- `SYNC_Lyrics` と `SYNC_PianoRoll` の専用フォルダーができるまでは、両者の暫定方針もこのノートへ置く。
+
+## プロジェクト群
+
+音楽関係の機能を、次の3つの独立したフォルダー、Delphiプロジェクト群、GitHubリポジトリへ分ける。
+
+| フォルダー／リポジトリ | 日本語名称 | 状態 |
+| --- | --- | --- |
+| `SYNC_Motion` | 音楽同期アニメーション | 最初に実装する |
+| `SYNC_Lyrics` | 歌詞テロップ | 暫定仕様のみ |
+| `SYNC_PianoRoll` | ピアノロール | 暫定仕様のみ |
+
+各フォルダーのルートには、原則として `_Input.dpr/.dproj` と `_Filter.dpr/.dproj` を並べる。
+プラグイン固有のPascalユニットは `Source`、複数ユニットから使うSDK定義や共通処理は `Source\Lib` へ置く。
+プロジェクトごとの子フォルダーを増やさず、リポジトリのルートを最小限に保つ。
+
+## AviUtl2上の識別名
+
+表示名は内部の識別やAPIの引数にも使われるため、一般的な日本語名称だけにはしない。
+空白や装飾記号を避け、次の形式を固定識別名として使う。
+
+```text
+SYNC_<日本語機能名>_<Input|Filter>
+```
+
+フィルタープラグインのグループ名は3製品とも `SYNC` とする。
+
+| 製品 | 入力プラグイン識別名 | フィルタープラグイン識別名 |
+| --- | --- | --- |
+| Motion | `SYNC_音楽同期アニメーション_Input` | `SYNC_音楽同期アニメーション_Filter` |
+| Lyrics | `SYNC_歌詞テロップ_Input` | `SYNC_歌詞テロップ_Filter` |
+| PianoRoll | `SYNC_ピアノロール_Input` | `SYNC_ピアノロール_Filter` |
+
+- 識別名はエイリアス、設定取得・書き戻し、既存プロジェクトの互換性へ影響するため、公開後は変更しない。
+- Delphiプロジェクト名と配布ファイル名はASCIIの `SYNC_Motion_Input` などを使い、AviUtl2上の識別名だけ上表を使う。
+- GUI項目名もAPIの引数に使う可能性があるため、確定後の変更は互換性を確認してから行う。
+
+## SYNC_Motion の目的
+
+WAV音楽ファイルとタイムラインの絶対フレーム位置を基準に、画像を音楽へ同期させて動かす。
+旧Syncroh2の制御オブジェクト大量配置方式は移植せず、入力プラグインと映像フィルタープラグインの2つで作り直す。
+
+```text
+WAV音楽ファイル
+    +
+SYNC_音楽同期アニメーション_Input
+    ↓ 絶対フレーム位置
+SYNC_音楽同期アニメーション_Filter
+    ↓
+対象画像の相対移動・拡縮・回転
+```
+
+初期実装は上下・左右の移動を中心にし、成立確認後に拡縮、回転、つぶれ、バウンド等を追加する。
+
+## SYNC_Motion の現在の構成
+
+- `SYNC_Motion_Input.dpr/.dproj`: 入力プラグイン。ビルド成果物は `.aui2`。
+- `SYNC_Motion_Filter.dpr/.dproj`: 映像フィルタープラグイン。ビルド成果物は `.auf2`。
+- `Source\SYNC_Motion_InputPlugin.pas`: 透明映像を返し、読み出されたフレーム位置を共有領域へ公開する。
+- `Source\SYNC_Motion_FilterPlugin.pas`: フィルター登録とフレーム情報受信の入口。
+- `Source\SYNC_Motion_ContextManager.pas`: Object IDとEffect IDごとに共有フレームとローカルフレームの対応を保持する。
+- `Source\SYNC_Motion_TempoMotion.pas`: 共有時刻と手動BPMから拍を求め、画像を上下移動する初期PoC。
+- `Source\Lib\SharedMemoryBase.pas`: 参照元から必要部分だけを取り込んだ名前付き共有メモリの基礎処理。
+- `Source\Lib\SYNC_Motion_FrameShared.pas`: InputとFilterのDLL間でフレーム、rate、scale、秒位置、更新時刻を一組として渡す。画像サイズは共有しない。
+- `Source\Lib\AviUtl2InputTypes.pas`: 入力プラグインSDKの最小Delphi ABI定義。
+- `Source\Lib\AviUtl2FilterTypes.pas`: フィルタープラグイン登録用の最小Delphi ABI定義。
+
+入力用の仮想素材拡張子は `.syncmotion`。現在は次のファイル名形式を解釈する。
+
+```text
+Width_Height_MaxSec_Fps_Scale.syncmotion
+```
+
+値を省略または解釈できない場合は、幅1、高さ1、3600秒、30fps、scale 1を使う。
+現段階ではフレーム共有の最小構成だけで、WAV解析、テンポ解析、揺れ計算、画像変形は未実装。
+Inputの映像読込コールバックを絶対フレーム位置の送信タイミングとし、名前付き共有メモリ
+`Local\SYNC_Motion_Frame_V2` を介してFilterへ渡す。共有レコードの更新番号により、
+書き込み途中の `frame`、`rate`、`scale`、秒位置が混在した状態をFilterが採用しないようにする。
+入力素材の画像サイズは透明映像を成立させるためInput内部では保持するが、同期情報には含めず、
+画像処理時はFilter側の処理対象サイズを採用する。
+
+共有フレーム受信確認用の診断帯、ビット表示、移動四角は削除済み。
+現在のFilterは共有された秒位置と `テンポ (BPM)` から一定テンポの拍位置を計算する。
+拍の瞬間に処理対象画像を最大80ピクセル上へ移動し、拍の前半で元位置へ戻して後半は静止する。
+120 BPMなら0.5秒ごと、60 BPMなら1秒ごとに跳ねるため、BPM変更の反映を目視確認できる。
+初期PoCでは同じ画像サイズのRGBAバッファ内で画素を移動するため、上移動時に下端が透明になり上端が切れる。
+共有値を取得できない場合、または拍の静止期間は画像を変更しない。
+
+Inputプラグインの映像キャッシュにより同じ素材の読込コールバックが再発火しない場合に備え、
+Filterは最初に受信した共有絶対フレームと、その時点の `Object_.Frame` の対応を記憶する。
+共有更新番号が変わらない間は、現在の `Object_.Frame` との差を共有絶対フレームへ加算して秒位置を求める。
+共有更新番号が変わった場合は新しい共有値で基準を更新する。
+基準は `Object_.ID + Object_.EffectID` ごとのコンテキストに分離し、複数オブジェクトや
+同一オブジェクト上の複数フィルターで混在させない。コンテキスト検索と基準更新は排他して行う。
+
+Filterの設定項目には `音楽ファイル` を置く。現在の選択候補はSongReaderが対応する
+`.mid`、`.midi`、`.ust`、`.vsq`、`.vsqx`、`.musicxml`、`.mxl`、`.xml`、`.mscx`、`.mscz`。
+ファイルパスの保持はAviUtl2へ任せ、現段階では選択ファイルを開かず解析もしない。
+解析実装が必要になった時点で `D:\DelphiProg\test\Syncroh2\Lib\SongReader` から必要なユニットと依存だけを
+`Source\Lib\SongReader` へコピーし、プロジェクトを自己完結させる。
+
+音楽解析より先に一定テンポ同期を作れるよう、Filterの設定項目に `テンポ (BPM)` を置く。
+初期値は120.00 BPM、設定範囲は1.00～999.99 BPM、変更単位は0.01 BPMとする。
+0 BPMは拍の長さを算出できないため許可しない。現段階では設定値の保持だけで、拍位置の計算にはまだ使わない。
+
+## SYNC_Motion の初期実装予定
+
+1. AviUtl2上でInputとFilterを読み込めることを確認する。
+2. 編集、再生、エンコードで絶対フレーム位置を正しく取得できることを確認する。
+3. 一定BPMによるテンポ同期を実装する。
+4. 同期開始拍・終了拍、1小節の拍数、強拍・弱拍を実装する。
+5. X/Y移動量と動作時間を使った上下・左右移動を実装する。
+6. 元の位置を維持した相対変形と、同期範囲外での初期状態復帰を確認する。
+7. WAVまたは音楽解析データを使う同期へ拡張する。
+
+## SYNC_Lyrics 暫定方針
+
+- 独立フォルダー／リポジトリ `SYNC_Lyrics` として作成する。
+- `SYNC_Lyrics_Input.dpr/.dproj` と `SYNC_Lyrics_Filter.dpr/.dproj` を同じルートへ置く。
+- Inputは歌詞描画用の絶対フレーム位置と透明な描画ベースを提供する。
+- Filterは歌詞、ルビ、行、スタイル、同期時刻を読み、カラオケやMV用の歌詞テロップを描画する。
+- AviUtl2上の識別名は `SYNC_歌詞テロップ_Input` と `SYNC_歌詞テロップ_Filter`。
+- 元音楽ファイルに含まれない歌詞同期の編集結果と表示設定は、音楽解析キャッシュとは分けて保存する。
+- 専用フォルダー作成後は、この節を `SYNC_Lyrics\note.md` へ移す。
+
+## SYNC_PianoRoll 暫定方針
+
+- 独立フォルダー／リポジトリ `SYNC_PianoRoll` として作成する。
+- `SYNC_PianoRoll_Input.dpr/.dproj` と `SYNC_PianoRoll_Filter.dpr/.dproj` を同じルートへ置く。
+- Inputはピアノロール描画用の絶対フレーム位置と透明な描画ベースを提供する。
+- FilterはMIDI等の音楽データを読み、鍵盤、ノート、縦横レイアウトを描画する。
+- AviUtl2上の識別名は `SYNC_ピアノロール_Input` と `SYNC_ピアノロール_Filter`。
+- 同じ元ファイルを複数オブジェクトが参照する場合に備え、解析結果は読み取り専用キャッシュとして共有する。
+- 専用フォルダー作成後は、この節を `SYNC_PianoRoll\note.md` へ移す。
+
+## 共通ビルドルール
+
+- Delphi 37.0を使用し、対象プラットフォームはWin64だけとする。
+- `_Input` と `_Filter` の両プロジェクトについて、DebugとReleaseのビルド設定を保つ。
+- コンパイル警告とエラーを確認し、原則として警告0、エラー0で完了とする。
+- Debugは生成した `.dll` と `.rsm` を調査用に残し、プラグイン拡張子のファイルも作る。
+- Releaseは `.aui2` または `.auf2` を作った後、同じ出力先の `.dll` と `.rsm` を削除する。
+- `Win32`、`Win64`、`.dcu`、`.rsm`、`.dll`、`.aui2`、`.auf2` はGitHubへ同期しない。
+- ビルド前に `C:\ProgramData\aviutl2\Plugin\SYNC_Motion` がなければ作成し、DLLを同フォルダーへ出力する。
+- Debugは同フォルダーでDLLを `.aui2` または `.auf2` へコピーし、DLLとRSMも残す。
+- Releaseは同フォルダーでDLLを `.aui2` または `.auf2` へコピーした後、DLLとRSMを削除する。
+
+Input Debug Win64:
+
+```powershell
+cmd /c "call ""C:\Program Files (x86)\Embarcadero\Studio\37.0\bin\rsvars.bat"" && msbuild ""D:\DelphiProg\test\SYNC_Motion\SYNC_Motion_Input.dproj"" /t:Build /p:Config=Debug /p:Platform=Win64"
+```
+
+Filter Debug Win64:
+
+```powershell
+cmd /c "call ""C:\Program Files (x86)\Embarcadero\Studio\37.0\bin\rsvars.bat"" && msbuild ""D:\DelphiProg\test\SYNC_Motion\SYNC_Motion_Filter.dproj"" /t:Build /p:Config=Debug /p:Platform=Win64"
+```
+
+Input Release Win64:
+
+```powershell
+cmd /c "call ""C:\Program Files (x86)\Embarcadero\Studio\37.0\bin\rsvars.bat"" && msbuild ""D:\DelphiProg\test\SYNC_Motion\SYNC_Motion_Input.dproj"" /t:Build /p:Config=Release /p:Platform=Win64"
+```
+
+Filter Release Win64:
+
+```powershell
+cmd /c "call ""C:\Program Files (x86)\Embarcadero\Studio\37.0\bin\rsvars.bat"" && msbuild ""D:\DelphiProg\test\SYNC_Motion\SYNC_Motion_Filter.dproj"" /t:Build /p:Config=Release /p:Platform=Win64"
+```
+
+配備先:
+
+```text
+C:\ProgramData\aviutl2\Plugin\SYNC_Motion\SYNC_Motion_Input.aui2
+C:\ProgramData\aviutl2\Plugin\SYNC_Motion\SYNC_Motion_Filter.auf2
+```
+
+## 配布・インストール用変数
+
+パッケージインストーラーのパス指定には、固定の絶対パスではなく次の変数を使う。
+特に解析キャッシュ、設定、その他の永続データを配置する段階では `{dataDir}` を使用する。
+
+| 変数 | 指す場所 | 主な用途 |
+| --- | --- | --- |
+| `{tmp}` | パッケージとバージョンごとに自動作成される一時フォルダー | ダウンロード先、ZIP展開先、コピー元 |
+| `{pluginsDir}` | AviUtl2のプラグイン配置先 | `.aui2`、`.auf2`、プラグイン付属ファイルの配置 |
+| `{scriptsDir}` | AviUtl2のスクリプト配置先 | `.anm2` 等のスクリプト配置 |
+| `{dataDir}` | `Language`、`Plugin`、`Script` の親に当たるAviUtl2データ保存先 | 永続データ、解析キャッシュ、共通設定等の配置 |
+
+インストール処理には `ダウンロード`、`ZIP展開`、`EXE実行`、`コピー` の4種類がある。
+ダウンロードとZIP展開では保存先を指定せず、自動作成される `{tmp}` を使用する。
+EXEの実行パスと引数、コピー元とコピー先の指定には上記変数を使用する。
+
+コピー元にはファイルまたはフォルダーを指定できるが、コピー先にはフォルダーを指定する。
+フォルダーをコピー元にした場合は、そのフォルダー自体ではなく内部のファイル一式がコピー先へ入る。
+SYNC_Motionの配布構成は、最終的に次のような指定を基本候補とする。
+
+```text
+コピー元: {tmp}/<展開フォルダー>/SYNC_Motion
+コピー先: {pluginsDir}/SYNC_Motion
+```
+
+将来データファイルが必要になった場合は、プラグイン本体へ混在させず次のように分ける。
+`{dataDir}` 直下へ何を置くかは、解析キャッシュと利用者設定の仕様を決めた時点で確定する。
+
+```text
+コピー元: {tmp}/<展開フォルダー>/Data/SYNC_Motion
+コピー先: {dataDir}/SYNC_Motion
+```
+
+アンインストール処理には `削除` と `EXE実行` を使用できる。
+利用者が生成した設定や解析キャッシュをアンインストール時に削除するかは別途決め、
+インストール物と利用者生成データを同じ削除対象へまとめない。
+
+バージョン管理にはハッシュ値を使用する。ハッシュ対象は主要ファイルに絞り、
+SYNC_Motionでは少なくとも `SYNC_Motion_Input.aui2` と `SYNC_Motion_Filter.auf2` を候補とする。
+
+## コメントルール
+
+- コメントはコードを読み直しただけで分かる内容ではなく、目的、責務、注意点、状態や値の意味を補うために書く。
+- 古い仕様や現在の実装と食い違うコメントは、見つけた時点で更新する。
+- 不要なコメント、同じ内容の重複、処理を日本語へ置き換えただけのコメントを増やさない。
+- ユニット先頭には、そのユニットの目的と担当範囲を `//` で書く。
+- `interface` に公開する関数・手続きには、呼び出し側から見た責務、入出力、重要な副作用を書く。
+- フィールドや定数の短い説明は行末へ置き、同じブロックでは `:`、`=`、`//` の位置を可能な範囲で揃える。
+- レコードの各フィールドには用途または値の意味を書き、ABI定義では特に配置と型の理由を明記する。
+- コメントと対象の宣言または実装の間に不要な空行を入れない。
+- `var` ブロック内へローカル関数・手続きを置かず、必要な補助処理は同じ `implementation` の独立関数へ分ける。
+- `property`、`procedure`、`function` の宣言は、112文字以内なら折り返さない。
+- 日本語文字列リテラルを持つ `.pas` と `.dpr` はUTF-8 BOM付きで保存する。
+- DelphiのSDKレコードはC/C++側のABIと正確に一致させ、フィールド追加時は順序、型、アラインメントを公式SDKと照合する。
+
+## ユニット分割・保守ルール
+
+- `.dpr` はexport境界と必要ユニットの列挙だけに留める。
+- `Source\SYNC_Motion_InputPlugin.pas` と `Source\SYNC_Motion_FilterPlugin.pas` は登録と処理の入口を担当する。
+- 音楽解析、同期イベント生成、動きの曲線、画像変形など責務が増えたら専用ユニットへ分ける。
+- 2つ以上の固有ユニットで共通化できる処理と汎用SDK定義は `Source\Lib` へ置く。
+- 元プロジェクトからライブラリをコピーした場合も、不要なユニットを一括で持ち込まず、実際に使う依存だけを置く。
+- グローバルな可変状態を避け、AviUtl2からの並列呼び出しを前提に共有キャッシュと共有メモリを設計する。
+- フィルターコールバック境界からDelphi例外を外へ漏らさない。
+- 毎フレームの処理ではファイル再読込、不要なメモリ確保、GUI値の書き戻しを行わない。
+
+## GitHub同期ルール
+
+- 同期対象は `.pas`、`.dpr`、`.dproj`、`.res`、文書、配布・検証に必要なスクリプトと素材。
+- ビルド成果物、IDEローカル設定、履歴・復旧データは同期しない。
+- `.gitattributes` でPascal、プロジェクト、文書の改行をCRLFへ統一する。
+- `.res`、画像、WAV、AviUtl2プロジェクト等はbinaryとして扱う。
+- GitHub Releasesへ配布物を登録する場合も、通常のGit履歴へビルド成果物を直接追加しない。
+
+## 作業ログ
+
+- 2026-07-24: `SYNC_Motion` を作成。InputとFilterの最小プロジェクト、SDK最小定義、フレーム共有を追加した。揺れ処理は未実装。
+- 2026-07-24: 識別名を `SYNC_<日本語機能名>_<Input|Filter>` に統一し、フィルターグループ名を `SYNC` とした。
+- 2026-07-24: `Aul2AudioFilter` を参考に、ビルド、コメント、保守、GitHub同期ルールを追加した。
+- 2026-07-24: Delphi IDEのビルド構成を、最上位の `Debug (Cfg_1)` と `Release (Cfg_2)` および各Win64派生構成へ修正した。選択用の `Base` 構成は持たない。
+- 2026-07-24: ビルド出力先を `C:\ProgramData\aviutl2\Plugin\SYNC_Motion` とし、Debugのコピー、Releaseのコピー後DLL/RSM削除を追加した。
+- 2026-07-24: Filterへ手動テンポ設定を追加した。初期値120.00 BPM、範囲1.00～999.99 BPM、変更単位0.01 BPMとし、同期処理への適用は未実装。
+- 2026-07-24: `Syncroh2_Input_Base` を参考に、Inputの映像読込時に絶対フレーム、rate、scale、秒位置、更新時刻を名前付き共有メモリへ送る構成を整理した。共有メモリ基礎ユニットだけをコピーし、画像サイズは共有対象から除外した。
+- 2026-07-24: Filterが共有フレームを受信できることを確認する診断表示を追加した。上端の移動マーカーと16ビット表示へフレーム7を入力し、マーカー位置7と出力色をコールバック試験で確認した。
+- 2026-07-24: フレーム受信の診断表示を削除し、手動BPMと共有秒位置による上下移動PoCへ置き換えた。拍の瞬間に上へ移動し、拍の前半で元位置へ戻る。
+- 2026-07-24: Inputキャッシュで共有更新が止まる場合に備え、最初の共有絶対フレームとFilterローカルフレームの差から以後の位置を補間するObject ID／Effect ID別コンテキストを追加した。共有フレーム90を一度だけ発火させた試験で、開始ローカルフレームが10と50の2オブジェクトがともに絶対フレーム90から91へ進み、新しい共有フレーム120で再基準化されることを確認した。
+- 2026-07-24: パッケージインストーラーで使う `{tmp}`、`{pluginsDir}`、`{scriptsDir}`、`{dataDir}` とコピー規則、アンインストール、ハッシュ管理の方針を記録した。
+- 2026-07-24: AviUtl2起動時のアクセス違反を調査。Input単体では正常起動し、FilterのGUI項目ポインターが直接nilだったことを確認した。参照実装と同じnil終端配列を渡すよう修正した。修正後はFilter単体とInput＋Filterの両方で5秒以上の正常起動を確認し、新しいApplication Errorが発生しないことを確認した。
+- 2026-07-24: Filterへ `音楽ファイル` のファイル選択項目を追加した。SongReader対応形式を選択候補へ列挙したが、ファイル読込と音楽解析はまだ実装していない。

@@ -1,4 +1,4 @@
-unit AviUtl2InputTypes;
+﻿unit AviUtl2InputTypes;
 
 // AviUtl2 入力プラグインSDKの最小ABI定義。
 

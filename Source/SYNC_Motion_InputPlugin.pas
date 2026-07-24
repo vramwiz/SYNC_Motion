@@ -1,4 +1,4 @@
-unit SYNC_Motion_InputPlugin;
+﻿unit SYNC_Motion_InputPlugin;
 
 // 透明映像を返し、読み出されたフレーム位置をフィルター側へ公開する。
 

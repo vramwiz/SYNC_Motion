@@ -1,4 +1,4 @@
-unit AviUtl2FilterTypes;
+﻿unit AviUtl2FilterTypes;
 
 // AviUtl2 フィルタープラグイン登録に必要な最小ABI定義。
 
@@ -8,8 +8,73 @@ interface
 
 type
   LPCWSTR = PWideChar;
-  TFuncProcVideo = function(Video: Pointer): Byte; cdecl;
+
+  PSCENE_INFO = ^TSCENE_INFO;
+  TSCENE_INFO = record
+    Width, Height: Integer;
+    Rate, Scale: Integer;
+    SampleRate: Integer;
+  end;
+
+  POBJECT_INFO = ^TOBJECT_INFO;
+  TOBJECT_INFO = record
+    ID: Int64;
+    Frame: Integer;
+    FrameTotal: Integer;
+    Time: Double;
+    TimeTotal: Double;
+    Width, Height: Integer;
+    SampleIndex: Int64;
+    SampleTotal: Int64;
+    SampleNum: Integer;
+    ChannelNum: Integer;
+    EffectID: Int64;
+    Flag: Integer;
+    Layer: Integer;
+    Index: Integer;
+    Num: Integer;
+    FrameS: Integer;
+    FrameE: Integer;
+  end;
+
+  TPIXEL_RGBA = packed record
+    R, G, B, A: Byte;
+  end;
+  PPIXEL_RGBA = ^TPIXEL_RGBA;
+
+  TFILTER_PROC_VIDEO_GET_TEX2D = function: Pointer; cdecl;
+  PFILTER_PROC_VIDEO = ^TFILTER_PROC_VIDEO;
+  TFILTER_PROC_VIDEO = record
+    Scene: PSCENE_INFO;
+    Object_: POBJECT_INFO;
+    GetImageData: procedure(Buffer: PPIXEL_RGBA); cdecl;
+    SetImageData: procedure(Buffer: PPIXEL_RGBA; Width, Height: Integer); cdecl;
+    GetImageTexture2D: TFILTER_PROC_VIDEO_GET_TEX2D;
+    GetFramebufferTexture2D: TFILTER_PROC_VIDEO_GET_TEX2D;
+  end;
+
+  TFuncProcVideo = function(Video: PFILTER_PROC_VIDEO): Byte; cdecl;
   TFuncProcAudio = function(Audio: Pointer): Byte; cdecl;
+
+  // AviUtl2が現在値と範囲を管理する数値トラック項目。
+  PFILTER_ITEM_TRACK = ^TFILTER_ITEM_TRACK;
+  TFILTER_ITEM_TRACK = record
+    ItemType : LPCWSTR; // SDK項目種別の固定値 `track`。
+    Name     : LPCWSTR; // GUI表示名兼、設定取得時の項目識別名。
+    Value    : Double;  // 初期値。配置後はAviUtl2が現在値を保持する。
+    S        : Double;  // 最小値。
+    E        : Double;  // 最大値。
+    Step     : Double;  // GUI上の変更単位。
+  end;
+
+  // AviUtl2が選択したファイルパスをValueへ保持するファイル選択項目。
+  PFILTER_ITEM_FILE = ^TFILTER_ITEM_FILE;
+  TFILTER_ITEM_FILE = record
+    ItemType   : LPCWSTR; // SDK項目種別の固定値 `file`。
+    Name       : LPCWSTR; // GUI表示名兼、設定取得時の項目識別名。
+    Value      : LPCWSTR; // AviUtl2が管理する現在のファイルパス。
+    FileFilter : LPCWSTR; // ファイル選択ダイアログ用の二重nil終端フィルター。
+  end;
 
   PFILTER_PLUGIN_TABLE = ^TFILTER_PLUGIN_TABLE;
   TFILTER_PLUGIN_TABLE = record

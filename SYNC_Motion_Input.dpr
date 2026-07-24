@@ -1,10 +1,11 @@
-library SYNC_Motion_Input;
+﻿library SYNC_Motion_Input;
 
 // 音楽同期アニメーション用の時刻ベースを提供する AviUtl2 入力プラグイン。
 
 uses
   Winapi.Windows,
   AviUtl2InputTypes in 'Source\Lib\AviUtl2InputTypes.pas',
+  SharedMemoryBase in 'Source\Lib\SharedMemoryBase.pas',
   SYNC_Motion_FrameShared in 'Source\Lib\SYNC_Motion_FrameShared.pas',
   SYNC_Motion_InputPlugin in 'Source\SYNC_Motion_InputPlugin.pas';
 
@@ -41,7 +42,7 @@ end;
 var
   Plugin: TInputPluginTable = (
     flag: INPUT_PLUGIN_FLAG_VIDEO;
-    name: '音楽同期ベース';
+    name: 'SYNC_音楽同期アニメーション_Input';
     filefilter: '音楽同期ベース (*.syncmotion)'#0'*.syncmotion'#0;
     information: '音楽同期アニメーション用フレーム位置入力';
     func_open: func_open;

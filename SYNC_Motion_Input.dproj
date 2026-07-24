@@ -1,68 +1,110 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <PropertyGroup>
-    <ProjectGuid>{795FD7DF-904D-46DC-AEB1-E3E9B040E0D3}</ProjectGuid>
-    <ProjectVersion>20.4</ProjectVersion>
-    <FrameworkType>None</FrameworkType>
-    <Base>True</Base>
-    <Config Condition="'$(Config)'==''">Debug</Config>
-    <Platform Condition="'$(Platform)'==''">Win64</Platform>
-    <ProjectName Condition="'$(ProjectName)'==''">SYNC_Motion_Input</ProjectName>
-    <TargetedPlatforms>2</TargetedPlatforms>
-    <AppType>Library</AppType>
-    <MainSource>SYNC_Motion_Input.dpr</MainSource>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Base)'!=''">
-    <GenDll>true</GenDll>
-    <DCC_DcuOutput>.\$(Platform)\$(Config)\DCU</DCC_DcuOutput>
-    <DCC_ExeOutput>.\$(Platform)\$(Config)</DCC_ExeOutput>
-    <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
-    <SanitizedProjectName>SYNC_Motion_Input</SanitizedProjectName>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Config)'=='Debug'">
-    <DCC_Define>DEBUG;$(DCC_Define)</DCC_Define>
-    <DCC_DebugDCUs>true</DCC_DebugDCUs>
-    <DCC_Optimize>false</DCC_Optimize>
-    <DCC_GenerateStackFrames>true</DCC_GenerateStackFrames>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Config)'=='Release'">
-    <DCC_Define>RELEASE;$(DCC_Define)</DCC_Define>
-    <DCC_LocalDebugSymbols>false</DCC_LocalDebugSymbols>
-    <DCC_SymbolReferenceInfo>0</DCC_SymbolReferenceInfo>
-    <DCC_DebugInformation>0</DCC_DebugInformation>
-  </PropertyGroup>
-  <ItemGroup>
-    <DelphiCompile Include="$(MainSource)">
-      <MainSource>MainSource</MainSource>
-    </DelphiCompile>
-    <DCCReference Include="Source\SYNC_Motion_InputPlugin.pas"/>
-    <DCCReference Include="Source\Lib\AviUtl2InputTypes.pas"/>
-    <DCCReference Include="Source\Lib\SYNC_Motion_FrameShared.pas"/>
-    <BuildConfiguration Include="Debug">
-      <Key>Debug</Key>
-    </BuildConfiguration>
-    <BuildConfiguration Include="Release">
-      <Key>Release</Key>
-    </BuildConfiguration>
-  </ItemGroup>
-  <ProjectExtensions>
-    <Borland.Personality>Delphi.Personality.12</Borland.Personality>
-    <Borland.ProjectType>Application</Borland.ProjectType>
-    <BorlandProject>
-      <Delphi.Personality>
-        <Source>
-          <Source Name="MainSource">SYNC_Motion_Input.dpr</Source>
-        </Source>
-      </Delphi.Personality>
-      <Platforms>
-        <Platform value="Win32">False</Platform>
-        <Platform value="Win64">True</Platform>
-      </Platforms>
-    </BorlandProject>
-    <ProjectFileVersion>12</ProjectFileVersion>
-  </ProjectExtensions>
-  <Import Project="$(BDS)\Bin\CodeGear.Delphi.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Delphi.Targets')"/>
-  <PropertyGroup Condition="'$(Platform)'=='Win64'">
-    <PostBuildEvent>copy /Y &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\$(PROJECTNAME).dll&quot; &quot;$(MSBuildProjectDirectory)\$(Platform)\$(Config)\$(PROJECTNAME).aui2&quot;</PostBuildEvent>
-    <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
-  </PropertyGroup>
+    <PropertyGroup>
+        <ProjectGuid>{795FD7DF-904D-46DC-AEB1-E3E9B040E0D3}</ProjectGuid>
+        <ProjectVersion>20.4</ProjectVersion>
+        <FrameworkType>None</FrameworkType>
+        <Config Condition="'$(Config)'==''">Release</Config>
+        <Platform Condition="'$(Platform)'==''">Win64</Platform>
+        <ProjectName Condition="'$(ProjectName)'==''">SYNC_Motion_Input</ProjectName>
+        <TargetedPlatforms>2</TargetedPlatforms>
+        <AppType>Library</AppType>
+        <MainSource>SYNC_Motion_Input.dpr</MainSource>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Config)'=='Debug' or '$(Cfg_1)'!=''">
+        <Cfg_1>true</Cfg_1>
+    </PropertyGroup>
+    <PropertyGroup Condition="('$(Platform)'=='Win64' and '$(Cfg_1)'=='true') or '$(Cfg_1_Win64)'!=''">
+        <Cfg_1_Win64>true</Cfg_1_Win64>
+        <CfgParent>Cfg_1</CfgParent>
+        <Cfg_1>true</Cfg_1>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Config)'=='Release' or '$(Cfg_2)'!=''">
+        <Cfg_2>true</Cfg_2>
+    </PropertyGroup>
+    <PropertyGroup Condition="('$(Platform)'=='Win64' and '$(Cfg_2)'=='true') or '$(Cfg_2_Win64)'!=''">
+        <Cfg_2_Win64>true</Cfg_2_Win64>
+        <CfgParent>Cfg_2</CfgParent>
+        <Cfg_2>true</Cfg_2>
+    </PropertyGroup>
+    <PropertyGroup>
+        <GenDll>true</GenDll>
+        <DCC_DcuOutput>.\$(Platform)\$(Config)\DCU</DCC_DcuOutput>
+        <DCC_ExeOutput>.\$(Platform)\$(Config)</DCC_ExeOutput>
+        <DCC_E>false</DCC_E>
+        <DCC_N>false</DCC_N>
+        <DCC_S>false</DCC_S>
+        <DCC_F>false</DCC_F>
+        <DCC_K>false</DCC_K>
+        <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
+        <SanitizedProjectName>SYNC_Motion_Input</SanitizedProjectName>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Platform)'=='Win64'">
+        <DCC_Namespace>Winapi;System.Win;Data.Win;Datasnap.Win;Web.Win;Soap.Win;Xml.Win;$(DCC_Namespace)</DCC_Namespace>
+        <BT_BuildType>Debug</BT_BuildType>
+        <VerInfo_IncludeVerInfo>true</VerInfo_IncludeVerInfo>
+        <VerInfo_Keys>CompanyName=;FileDescription=SYNC_Motion_Input;FileVersion=0.1.0.0;InternalName=SYNC_Motion_Input;LegalCopyright=;LegalTrademarks=;OriginalFilename=SYNC_Motion_Input.aui2;ProgramID=com.vramwiz.sync.motion.input;ProductName=SYNC Motion;ProductVersion=0.1.0.0;Comments=AviUtl2 input plugin for SYNC Motion</VerInfo_Keys>
+        <VerInfo_Locale>1041</VerInfo_Locale>
+        <Debugger_HostApplication>D:\aviutl2_v2.1.0\aviutl2.exe</Debugger_HostApplication>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Cfg_1)'!=''">
+        <BT_BuildType>Debug</BT_BuildType>
+        <DCC_Define>DEBUG;$(DCC_Define)</DCC_Define>
+        <DCC_DebugDCUs>true</DCC_DebugDCUs>
+        <DCC_Optimize>false</DCC_Optimize>
+        <DCC_GenerateStackFrames>true</DCC_GenerateStackFrames>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Cfg_1_Win64)'!=''">
+        <DCC_ExeOutput>C:\ProgramData\aviutl2\Plugin\SYNC_Motion</DCC_ExeOutput>
+        <PreBuildEvent>if not exist &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Motion&quot; mkdir &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Motion&quot;</PreBuildEvent>
+        <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
+        <PostBuildEvent>copy /Y &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Motion\$(PROJECTNAME).dll&quot; &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Motion\$(PROJECTNAME).aui2&quot;</PostBuildEvent>
+        <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Cfg_2)'!=''">
+        <BT_BuildType>Release</BT_BuildType>
+        <DCC_LocalDebugSymbols>false</DCC_LocalDebugSymbols>
+        <DCC_Define>RELEASE;$(DCC_Define)</DCC_Define>
+        <DCC_SymbolReferenceInfo>0</DCC_SymbolReferenceInfo>
+        <DCC_DebugInformation>0</DCC_DebugInformation>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Cfg_2_Win64)'!=''">
+        <DCC_ExeOutput>C:\ProgramData\aviutl2\Plugin\SYNC_Motion</DCC_ExeOutput>
+        <PreBuildEvent>if not exist &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Motion&quot; mkdir &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Motion&quot;</PreBuildEvent>
+        <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
+        <PostBuildEvent>copy /Y &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Motion\$(PROJECTNAME).dll&quot; &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Motion\$(PROJECTNAME).aui2&quot;&amp;&amp;if exist &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Motion\$(PROJECTNAME).dll&quot; del /Q &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Motion\$(PROJECTNAME).dll&quot;&amp;&amp;if exist &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Motion\$(PROJECTNAME).rsm&quot; del /Q &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Motion\$(PROJECTNAME).rsm&quot;</PostBuildEvent>
+        <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
+    </PropertyGroup>
+    <ItemGroup>
+        <DelphiCompile Include="$(MainSource)">
+            <MainSource>MainSource</MainSource>
+        </DelphiCompile>
+        <DCCReference Include="Source\SYNC_Motion_InputPlugin.pas"/>
+        <DCCReference Include="Source\Lib\AviUtl2InputTypes.pas"/>
+        <DCCReference Include="Source\Lib\SYNC_Motion_FrameShared.pas"/>
+        <BuildConfiguration Include="Debug">
+            <Key>Cfg_1</Key>
+        </BuildConfiguration>
+        <BuildConfiguration Include="Release">
+            <Key>Cfg_2</Key>
+        </BuildConfiguration>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Delphi.Personality.12</Borland.Personality>
+        <Borland.ProjectType>Application</Borland.ProjectType>
+        <BorlandProject>
+            <Delphi.Personality>
+                <Source>
+                    <Source Name="MainSource">SYNC_Motion_Input.dpr</Source>
+                </Source>
+            </Delphi.Personality>
+            <Platforms>
+                <Platform value="Win32">False</Platform>
+                <Platform value="Win64">True</Platform>
+            </Platforms>
+        </BorlandProject>
+        <ProjectFileVersion>12</ProjectFileVersion>
+    </ProjectExtensions>
+    <Import Project="$(BDS)\Bin\CodeGear.Delphi.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Delphi.Targets')"/>
+    <Import Project="$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj" Condition="Exists('$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj')"/>
+    <Import Project="$(MSBuildProjectName).deployproj" Condition="Exists('$(MSBuildProjectName).deployproj')"/>
 </Project>
