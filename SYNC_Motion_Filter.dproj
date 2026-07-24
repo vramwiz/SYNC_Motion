@@ -1,4 +1,4 @@
-<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <PropertyGroup>
         <ProjectGuid>{2E9D8FB9-03B5-462E-8BCC-4F70F5B165BA}</ProjectGuid>
         <ProjectVersion>20.4</ProjectVersion>
@@ -9,6 +9,7 @@
         <TargetedPlatforms>2</TargetedPlatforms>
         <AppType>Library</AppType>
         <MainSource>SYNC_Motion_Filter.dpr</MainSource>
+        <Base>True</Base>
     </PropertyGroup>
     <PropertyGroup>
         <GenDll>true</GenDll>
@@ -19,24 +20,37 @@
         <DCC_S>false</DCC_S>
         <DCC_F>false</DCC_F>
         <DCC_K>false</DCC_K>
-        <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
+        <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Winapi;Vcl;$(DCC_Namespace)</DCC_Namespace>
         <SanitizedProjectName>SYNC_Motion_Filter</SanitizedProjectName>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Config)'=='Base' or '$(Base)'!=''">
+        <Base>true</Base>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Debug' or '$(Cfg_1)'!=''">
         <Cfg_1>true</Cfg_1>
+        <CfgParent>Base</CfgParent>
+        <Base>true</Base>
     </PropertyGroup>
     <PropertyGroup Condition="('$(Platform)'=='Win64' and '$(Cfg_1)'=='true') or '$(Cfg_1_Win64)'!=''">
         <Cfg_1_Win64>true</Cfg_1_Win64>
         <CfgParent>Cfg_1</CfgParent>
         <Cfg_1>true</Cfg_1>
+        <Base>true</Base>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Release' or '$(Cfg_2)'!=''">
         <Cfg_2>true</Cfg_2>
+        <CfgParent>Base</CfgParent>
+        <Base>true</Base>
     </PropertyGroup>
     <PropertyGroup Condition="('$(Platform)'=='Win64' and '$(Cfg_2)'=='true') or '$(Cfg_2_Win64)'!=''">
         <Cfg_2_Win64>true</Cfg_2_Win64>
         <CfgParent>Cfg_2</CfgParent>
         <Cfg_2>true</Cfg_2>
+        <Base>true</Base>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Base)'!=''">
+        <GenDll>true</GenDll>
+        <SanitizedProjectName>SYNC_Motion_Filter</SanitizedProjectName>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_1)'!=''">
         <BT_BuildType>Debug</BT_BuildType>
@@ -81,13 +95,40 @@
             <MainSource>MainSource</MainSource>
         </DelphiCompile>
         <DCCReference Include="Source\Lib\AviUtl2FilterTypes.pas"/>
+        <DCCReference Include="Source\Lib\SharedMemoryBase.pas"/>
         <DCCReference Include="Source\Lib\SYNC_Motion_FrameShared.pas"/>
+        <DCCReference Include="Source\Lib\SongReader\RTTIPersistent.pas"/>
+        <DCCReference Include="Source\Lib\SongReader\RTTIPersistentIni.pas"/>
+        <DCCReference Include="Source\Lib\SongReader\SectionFileManager.pas"/>
+        <DCCReference Include="Source\Lib\SongReader\TextEncodingUtils.pas"/>
+        <DCCReference Include="Source\Lib\SongReader\SongAIUEO.pas"/>
+        <DCCReference Include="Source\Lib\SongReader\SongDataInfo.pas"/>
+        <DCCReference Include="Source\Lib\SongReader\SongDataNote.pas"/>
+        <DCCReference Include="Source\Lib\SongReader\SongDataTempo.pas"/>
+        <DCCReference Include="Source\Lib\SongReader\SongDataTrack.pas"/>
+        <DCCReference Include="Source\Lib\SongReader\SongData.pas"/>
+        <DCCReference Include="Source\Lib\SongReader\SongReader.pas"/>
+        <DCCReference Include="Source\Lib\SongReader\SongReaderSMF.pas"/>
+        <DCCReference Include="Source\Lib\SongReader\SongReaderUST.pas"/>
+        <DCCReference Include="Source\Lib\SongReader\SongReaderVSQX.pas"/>
+        <DCCReference Include="Source\Lib\SongReader\SongReaderMusicXML.pas"/>
+        <DCCReference Include="Source\Lib\SongReader\SongReaderMusicMSC.pas"/>
+        <DCCReference Include="Source\Lib\SongReader\SongReaderMusicMSCZ.pas"/>
+        <DCCReference Include="Source\Lib\SongReader\SongReaderManager.pas"/>
+        <DCCReference Include="Source\SYNC_Motion_ContextManager.pas"/>
+        <DCCReference Include="Source\SYNC_Motion_MusicTempo.pas"/>
+        <DCCReference Include="Source\SYNC_Motion_TempoMotion.pas"/>
         <DCCReference Include="Source\SYNC_Motion_FilterPlugin.pas"/>
+        <BuildConfiguration Include="Base">
+            <Key>Base</Key>
+        </BuildConfiguration>
         <BuildConfiguration Include="Debug">
             <Key>Cfg_1</Key>
+            <CfgParent>Base</CfgParent>
         </BuildConfiguration>
         <BuildConfiguration Include="Release">
             <Key>Cfg_2</Key>
+            <CfgParent>Base</CfgParent>
         </BuildConfiguration>
     </ItemGroup>
     <ProjectExtensions>
@@ -110,7 +151,6 @@
     <Import Project="$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj" Condition="Exists('$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj')"/>
     <Import Project="$(MSBuildProjectName).deployproj" Condition="Exists('$(MSBuildProjectName).deployproj')"/>
     <PropertyGroup Condition="'$(Config)'=='Debug' And '$(Platform)'=='Win64'">
-        <DCC_ExeOutput>C:\ProgramData\aviutl2\Plugin\SYNC_Motion</DCC_ExeOutput>
         <PreBuildEvent>if not exist &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Motion&quot; mkdir &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Motion&quot;</PreBuildEvent>
         <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
         <PreLinkEvent/>
@@ -119,7 +159,6 @@
         <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Release' And '$(Platform)'=='Win64'">
-        <DCC_ExeOutput>C:\ProgramData\aviutl2\Plugin\SYNC_Motion</DCC_ExeOutput>
         <PreBuildEvent>if not exist &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Motion&quot; mkdir &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Motion&quot;</PreBuildEvent>
         <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
         <PreLinkEvent/>

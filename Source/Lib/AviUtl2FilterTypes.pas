@@ -67,6 +67,19 @@ type
     Step     : Double;  // GUI上の変更単位。
   end;
 
+  // 列挙値から1つを選ぶ選択項目。ListはName=nilの要素で終端する。
+  PFILTER_ITEM_SELECT = ^TFILTER_ITEM_SELECT;
+  TFILTER_ITEM_SELECT_ITEM = record
+    Name : LPCWSTR; // GUIに表示する選択肢名。
+    Value: Integer; // 選択時にValueへ格納される識別値。
+  end;
+  TFILTER_ITEM_SELECT = record
+    ItemType: LPCWSTR;                   // SDK項目種別の固定値 `select`。
+    Name    : LPCWSTR;                   // GUI表示名兼、設定取得時の項目識別名。
+    Value   : Integer;                   // 現在選択されている識別値。
+    List    : ^TFILTER_ITEM_SELECT_ITEM; // nil終端された選択肢配列。
+  end;
+
   // AviUtl2が選択したファイルパスをValueへ保持するファイル選択項目。
   PFILTER_ITEM_FILE = ^TFILTER_ITEM_FILE;
   TFILTER_ITEM_FILE = record
