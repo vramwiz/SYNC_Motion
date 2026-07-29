@@ -17,9 +17,14 @@ function ResolveMotionFrameState(Video: PFILTER_PROC_VIDEO;
 implementation
 
 uses
+  Winapi.Windows,
   System.Generics.Collections,
   System.SyncObjs,
   System.SysUtils;
+
+const
+  // 別オブジェクトや過去のプロジェクトが残した共有値を新規基準に採用しない。
+  MAX_SHARED_FRAME_AGE_MS = 1000;
 
 type
   TMotionObjectContext = class
@@ -97,6 +102,7 @@ function TMotionContextList.Resolve(Video: PFILTER_PROC_VIDEO;
 var
   Context: TMotionObjectContext;
   ObjectInfo: POBJECT_INFO;
+  SharedStateIsFresh: Boolean;
 begin
   FillChar(EffectiveState, SizeOf(EffectiveState), 0);
   Result := False;
@@ -107,10 +113,14 @@ begin
   FLock.Acquire;
   try
     Context := GetOrCreate(ObjectInfo^.ID, ObjectInfo^.EffectID);
+    SharedStateIsFresh := (SharedState.UpdateTick > 0) and
+      (GetTickCount64 - SharedState.UpdateTick <= MAX_SHARED_FRAME_AGE_MS);
 
     // Inputが発火した時点の共有絶対フレームとローカルフレームを対応付ける。
-    if not Context.HasAnchor or
-      (Context.LastSharedSequence <> SharedState.Sequence) then
+    // Inputの再取得が省略された再描画では、既存基準からローカル差分を補間する。
+    if (not Context.HasAnchor and SharedStateIsFresh) or
+      (Context.HasAnchor and SharedStateIsFresh and
+       (Context.LastSharedSequence <> SharedState.Sequence)) then
     begin
       Context.HasAnchor := True;
       Context.LastSharedSequence := SharedState.Sequence;

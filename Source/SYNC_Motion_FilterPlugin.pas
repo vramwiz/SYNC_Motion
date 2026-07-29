@@ -56,19 +56,14 @@ begin
       end
       else
       begin
+        // 音楽ファイル指定時もInput開始時間を含む共有時刻を使う。
         // 正のオフセットは動きを遅延させ、負の値は先行させる。
-        if (Video <> nil) and (Video^.Object_ <> nil) and
-          (EffectiveState.Rate > 0) and (EffectiveState.Scale > 0) then
-        begin
-          AdjustedTime := Video^.Object_^.Frame *
-            EffectiveState.Scale / EffectiveState.Rate -
-            MotionShiftItem.Value;
-          if (AdjustedTime >= 0) and
-            TryGetMusicSync(MusicFileName, AdjustedTime, BeatPosition,
-              TempoBpm, SegmentStartSeconds) then
-            ApplyBeatMotion(Video, BeatPosition, MotionSpeedItem.Value,
-              MotionWidthItem.Value, MotionAngleItem.Value);
-        end;
+        AdjustedTime := EffectiveState.TimeSeconds - MotionShiftItem.Value;
+        if (AdjustedTime >= 0) and
+          TryGetMusicSync(MusicFileName, AdjustedTime, BeatPosition,
+            TempoBpm, SegmentStartSeconds) then
+          ApplyBeatMotion(Video, BeatPosition, MotionSpeedItem.Value,
+            MotionWidthItem.Value, MotionAngleItem.Value);
       end;
     end;
   except
