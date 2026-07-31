@@ -7,8 +7,30 @@ uses
   System.IOUtils,
   System.Math,
   System.SysUtils,
+  AviUtl2FilterTypes,
   SYNC_Motion_MusicTempo,
   SYNC_Motion_TempoMotion;
+
+const
+  TEST_IMAGE_SIZE = 5;
+  TEST_PIXEL_COUNT = TEST_IMAGE_SIZE * TEST_IMAGE_SIZE;
+
+var
+  TestImageInput, TestImageOutput: array[0..TEST_PIXEL_COUNT - 1] of TPIXEL_RGBA;
+  TestImageWasSet: Boolean;
+
+procedure GetTestImageData(Buffer: PPIXEL_RGBA); cdecl;
+begin
+  Move(TestImageInput[0], Buffer^, SizeOf(TestImageInput));
+end;
+
+procedure SetTestImageData(Buffer: PPIXEL_RGBA; Width, Height: Integer); cdecl;
+begin
+  if (Width <> TEST_IMAGE_SIZE) or (Height <> TEST_IMAGE_SIZE) then
+    Exit;
+  Move(Buffer^, TestImageOutput[0], SizeOf(TestImageOutput));
+  TestImageWasSet := True;
+end;
 
 procedure SaveBytes(const FileName: string; const Bytes: array of Byte);
 var
@@ -48,15 +70,75 @@ begin
   RequireNear(ExpectedStart, StartSeconds, 'segment start');
 end;
 
+procedure ClearTestImage;
+begin
+  FillChar(TestImageInput, SizeOf(TestImageInput), 0);
+  FillChar(TestImageOutput, SizeOf(TestImageOutput), 0);
+  TestImageWasSet := False;
+end;
+
+procedure CheckRhythmImageTransforms;
 var
-  BadFile, ChangedFile, ConstantFile, TempDir: string;
-  Beat, Bpm, StartFrame, StartSeconds: Double;
+  Index, TransparentCount: Integer;
+  ObjectInfo: TOBJECT_INFO;
+  Video: TFILTER_PROC_VIDEO;
+begin
+  FillChar(ObjectInfo, SizeOf(ObjectInfo), 0);
+  ObjectInfo.Width := TEST_IMAGE_SIZE;
+  ObjectInfo.Height := TEST_IMAGE_SIZE;
+  FillChar(Video, SizeOf(Video), 0);
+  Video.Object_ := @ObjectInfo;
+  Video.GetImageData := GetTestImageData;
+  Video.SetImageData := SetTestImageData;
+
+  ClearTestImage;
+  TestImageInput[2 * TEST_IMAGE_SIZE + 2].R := 255;
+  TestImageInput[2 * TEST_IMAGE_SIZE + 2].A := 255;
+  ApplyRhythmMotion(@Video, rmtVerticalJump, 0.25, 2.0, 1.0);
+  Require(TestImageWasSet and
+    (TestImageOutput[1 * TEST_IMAGE_SIZE + 2].R = 255),
+    'vertical jump image mismatch');
+
+  ClearTestImage;
+  for Index := 0 to High(TestImageInput) do
+    TestImageInput[Index].A := 255;
+  ApplyRhythmMotion(@Video, rmtShrink, 0.25, 2.0, 100.0);
+  TransparentCount := 0;
+  for Index := 0 to High(TestImageOutput) do
+    if TestImageOutput[Index].A = 0 then
+      Inc(TransparentCount);
+  Require(TestImageWasSet and (TransparentCount > 0),
+    'shrink image mismatch');
+
+  ClearTestImage;
+  TestImageInput[2 * TEST_IMAGE_SIZE + 2].R := 255;
+  TestImageInput[2 * TEST_IMAGE_SIZE + 2].A := 255;
+  ApplyRhythmMotion(@Video, rmtPendulum, 0.25, 2.0, 2.4);
+  Require(TestImageWasSet and
+    (TestImageOutput[3 * TEST_IMAGE_SIZE + 4].R = 255),
+    'pendulum image mismatch');
+
+  ClearTestImage;
+  TestImageInput[2 * TEST_IMAGE_SIZE + 2].R := 255;
+  TestImageInput[2 * TEST_IMAGE_SIZE + 2].A := 255;
+  ApplyMusicMotion(@Video, rmtNone, 0, 2.0, 0, 0, 0,
+    72, 1.0, 60, 1.0, 1.0);
+  Require(TestImageWasSet and
+    (TestImageOutput[1 * TEST_IMAGE_SIZE + 2].R = 255),
+    'high pitch image mismatch');
+end;
+
+var
+  BadFile, ChangedFile, ConstantFile, TempDir, VelocityFile: string;
+  Beat, Bpm, Envelope, Level, NoteNumber, StartFrame, StartSeconds: Double;
   OffsetX, OffsetY: Integer;
+  Transform: TRhythmTransform;
 begin
   TempDir := TPath.Combine(TPath.GetTempPath, 'SYNC_Motion_TempoTests');
   ForceDirectories(TempDir);
   ConstantFile := TPath.Combine(TempDir, 'constant.mid');
   ChangedFile := TPath.Combine(TempDir, 'changed.mid');
+  VelocityFile := TPath.Combine(TempDir, 'velocity.mid');
   BadFile := TPath.Combine(TempDir, 'bad.mid');
 
   // 120 BPM。960 tick後に終端するが、表は最後のテンポで継続する。
@@ -73,6 +155,15 @@ begin
     $00,$FF,$51,$03,$07,$A1,$20,
     $83,$60,$FF,$51,$03,$0F,$42,$40,
     $83,$60,$FF,$2F,$00]);
+
+  // 120 BPM、velocity 64のノートを0.0秒から0.5秒まで発音する。
+  SaveBytes(VelocityFile, [
+    $4D,$54,$68,$64, $00,$00,$00,$06, $00,$00,$00,$01,$01,$E0,
+    $4D,$54,$72,$6B, $00,$00,$00,$14,
+    $00,$FF,$51,$03,$07,$A1,$20,
+    $00,$90,$3C,$40,
+    $83,$60,$80,$3C,$40,
+    $00,$FF,$2F,$00]);
 
   SaveBytes(BadFile, [$00,$01,$02,$03]);
 
@@ -102,6 +193,74 @@ begin
     CalculateJumpVector(0.0, 2.0, 50.0, 180.0, OffsetX, OffsetY);
     Require((OffsetX = 0) and (OffsetY = 50),
       'down angle mismatch');
+    CalculateRhythmTransform(rmtNone, 0.0, 2.0, 50.0, Transform);
+    Require((Transform.OffsetX = 0) and (Transform.OffsetY = 0),
+      'none rhythm offset mismatch');
+    RequireNear(1.0, Transform.Scale, 'none rhythm scale');
+    RequireNear(0.0, Transform.AngleDegrees, 'none rhythm angle');
+    CalculateRhythmTransform(rmtVerticalJump, 0.0, 2.0, 50.0,
+      Transform);
+    Require((Transform.OffsetX = 0) and (Transform.OffsetY = 0),
+      'vertical rhythm must start at origin');
+    CalculateRhythmTransform(rmtVerticalJump, 0.25, 2.0, 50.0,
+      Transform);
+    Require((Transform.OffsetX = 0) and (Transform.OffsetY = -50),
+      'vertical rhythm peak mismatch');
+    CalculateRhythmTransform(rmtVerticalJump, 0.5, 2.0, 50.0,
+      Transform);
+    Require((Transform.OffsetX = 0) and (Transform.OffsetY = 0),
+      'vertical rhythm must return to origin');
+    CalculateRhythmTransform(rmtShrink, 0.0, 2.0, 50.0, Transform);
+    RequireNear(1.0, Transform.Scale, 'shrink rhythm start');
+    CalculateRhythmTransform(rmtShrink, 0.25, 2.0, 50.0, Transform);
+    RequireNear(0.875, Transform.Scale, 'shrink rhythm scale');
+    CalculateRhythmTransform(rmtShrink, 0.5, 2.0, 50.0, Transform);
+    RequireNear(1.0, Transform.Scale, 'shrink rhythm finish');
+    CalculateRhythmTransform(rmtPendulum, 0.0, 2.0, 40.0, Transform);
+    Require((Transform.OffsetX = 0) and (Transform.OffsetY = 0),
+      'pendulum center start mismatch');
+    CalculateRhythmTransform(rmtPendulum, 0.25, 2.0, 40.0, Transform);
+    Require((Transform.OffsetX = 40) and (Transform.OffsetY = 10),
+      'pendulum right position mismatch');
+    CalculateRhythmTransform(rmtPendulum, 0.5, 2.0, 40.0, Transform);
+    Require((Transform.OffsetX = 0) and (Transform.OffsetY = 0),
+      'pendulum center return mismatch');
+    CalculateRhythmTransform(rmtPendulum, 0.75, 2.0, 40.0, Transform);
+    Require((Transform.OffsetX = -40) and (Transform.OffsetY = 10),
+      'pendulum left position mismatch');
+    Require(TryGetMusicVolume(VelocityFile, 0.0, Level),
+      'velocity lookup at note start failed');
+    RequireNear(0.0, Level, 'velocity attack start');
+    Require(TryGetMusicVolume(VelocityFile, 0.025, Level),
+      'velocity lookup during attack failed');
+    RequireNear(32.0 / 127.0, Level, 'velocity attack midpoint');
+    Require(TryGetMusicVolume(VelocityFile, 0.25, Level),
+      'velocity lookup during sustain failed');
+    RequireNear(64.0 / 127.0, Level, 'velocity sustain');
+    Require(TryGetMusicVolume(VelocityFile, 0.475, Level),
+      'velocity lookup during release failed');
+    RequireNear(32.0 / 127.0, Level, 'velocity release midpoint');
+    Require(TryGetMusicVolume(VelocityFile, 0.5, Level),
+      'velocity lookup after note failed');
+    RequireNear(0.0, Level, 'velocity note end');
+    RequireNear(1.5, CalculateVolumeScale(1.0, 100.0),
+      'volume expansion scale');
+    RequireNear(0.5, CalculateVolumeScale(1.0, -100.0),
+      'volume contraction scale');
+    Require(TryGetMusicPitch(VelocityFile, 0.025, NoteNumber, Envelope),
+      'pitch lookup during attack failed');
+    RequireNear(60.0, NoteNumber, 'pitch note number');
+    RequireNear(0.5, Envelope, 'pitch attack midpoint');
+    Require(TryGetMusicPitch(VelocityFile, 0.25, NoteNumber, Envelope),
+      'pitch lookup during sustain failed');
+    RequireNear(1.0, Envelope, 'pitch sustain envelope');
+    Require(CalculatePitchOffset(72, 1.0, 60, 100, 100) = -100,
+      'high pitch offset mismatch');
+    Require(CalculatePitchOffset(48, 1.0, 60, 100, 100) = 100,
+      'low pitch offset mismatch');
+    Require(CalculatePitchOffset(66, 0.5, 60, 100, 100) = -25,
+      'pitch normalization mismatch');
+    CheckRhythmImageTransforms;
     Require(not TryGetMusicSync(BadFile, 1.0, Beat, Bpm, StartSeconds),
       'broken file must fail silently');
     Writeln('PASS');

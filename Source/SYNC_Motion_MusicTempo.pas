@@ -9,6 +9,10 @@ function TryGetMusicSync(const FileName: string; TimeSeconds: Double;
 function TryGetMusicSyncAtFrame(const FileName: string; Frame: Int64;
   Rate, Scale: Integer; out BeatPosition, TempoBpm,
   SegmentStartFrame: Double): Boolean;
+function TryGetMusicVolume(const FileName: string; TimeSeconds: Double;
+  out Level: Double): Boolean;
+function TryGetMusicPitch(const FileName: string; TimeSeconds: Double;
+  out NoteNumber, Envelope: Double): Boolean;
 procedure InitializeMusicTempoCache;
 procedure FinalizeMusicTempoCache;
 
@@ -17,9 +21,11 @@ implementation
 uses
   System.Classes,
   System.Generics.Collections,
+  System.Math,
   System.SyncObjs,
   System.SysUtils,
-  SongData;
+  SongData,
+  SongDataNote;
 
 type
   TRawTempo = record
@@ -34,13 +40,26 @@ type
     TempoBpm: Double;
   end;
 
+  TMusicNoteSegment = record
+    StartSeconds: Double;
+    EndSeconds  : Double;
+    Key         : Integer;
+    Velocity    : Integer;
+  end;
+
   TMusicTempoTable = class
   private
     FSegments: TArray<TTempoSegment>;
+    FNotes: TArray<TMusicNoteSegment>;
+    FMaxNoteDuration: Double;
+    procedure BuildNotesFromSong(Song: TSongData);
   public
     function BuildFromSong(Song: TSongData): Boolean;
     function Lookup(TimeSeconds: Double; out BeatPosition, TempoBpm,
       SegmentStartSeconds: Double): Boolean;
+    function LookupVolume(TimeSeconds: Double; out Level: Double): Boolean;
+    function LookupPitch(TimeSeconds: Double; out NoteNumber,
+      Envelope: Double): Boolean;
   end;
 
   TMusicTempoCacheEntry = class
@@ -75,6 +94,56 @@ begin
     end;
     Values[J + 1] := Value;
   end;
+end;
+
+procedure SortNoteSegments(var Values: TArray<TMusicNoteSegment>);
+var
+  I, J: Integer;
+  Value: TMusicNoteSegment;
+begin
+  for I := 1 to High(Values) do
+  begin
+    Value := Values[I];
+    J := I - 1;
+    while (J >= 0) and (Values[J].StartSeconds > Value.StartSeconds) do
+    begin
+      Values[J + 1] := Values[J];
+      Dec(J);
+    end;
+    Values[J + 1] := Value;
+  end;
+end;
+
+procedure TMusicTempoTable.BuildNotesFromSong(Song: TSongData);
+var
+  Duration: Double;
+  I, NoteCount: Integer;
+  Note: TSongNoteItem;
+begin
+  FNotes := nil;
+  FMaxNoteDuration := 0;
+  if Song = nil then
+    Exit;
+
+  SetLength(FNotes, Song.Notes.Count);
+  NoteCount := 0;
+  for I := 0 to Song.Notes.Count - 1 do
+  begin
+    Note := Song.Notes[I];
+    if (Note = nil) or (Note.StartSec < 0) or
+      (Note.EndSec <= Note.StartSec) or (Note.Velocity <= 0) then
+      Continue;
+    FNotes[NoteCount].StartSeconds := Note.StartSec;
+    FNotes[NoteCount].EndSeconds := Note.EndSec;
+    FNotes[NoteCount].Key := EnsureRange(Note.Key, 0, 127);
+    FNotes[NoteCount].Velocity := EnsureRange(Note.Velocity, 1, 127);
+    Duration := Note.EndSec - Note.StartSec;
+    if Duration > FMaxNoteDuration then
+      FMaxNoteDuration := Duration;
+    Inc(NoteCount);
+  end;
+  SetLength(FNotes, NoteCount);
+  SortNoteSegments(FNotes);
 end;
 
 function TMusicTempoTable.BuildFromSong(Song: TSongData): Boolean;
@@ -140,6 +209,7 @@ begin
     end;
   end;
   SetLength(FSegments, SegmentCount);
+  BuildNotesFromSong(Song);
   Result := SegmentCount > 0;
 end;
 
@@ -176,6 +246,124 @@ begin
   SegmentStartSeconds := FSegments[SegmentIndex].StartSeconds;
   BeatPosition := FSegments[SegmentIndex].StartBeat +
     (TimeSeconds - SegmentStartSeconds) * TempoBpm / 60.0;
+end;
+
+function CalculateNoteEnvelope(const Note: TMusicNoteSegment;
+  TimeSeconds: Double): Double;
+const
+  MAX_FADE_SECONDS = 0.05;
+var
+  Duration, FadeSeconds: Double;
+begin
+  Result := 0;
+  if (TimeSeconds < Note.StartSeconds) or
+    (TimeSeconds >= Note.EndSeconds) then
+    Exit;
+
+  Duration := Note.EndSeconds - Note.StartSeconds;
+  FadeSeconds := Min(MAX_FADE_SECONDS, Duration / 2.0);
+  Result := 1.0;
+  if FadeSeconds <= 0 then
+    Exit;
+
+  if TimeSeconds < Note.StartSeconds + FadeSeconds then
+    Result := (TimeSeconds - Note.StartSeconds) / FadeSeconds;
+  if TimeSeconds > Note.EndSeconds - FadeSeconds then
+    Result := Min(Result,
+      (Note.EndSeconds - TimeSeconds) / FadeSeconds);
+  Result := EnsureRange(Result, 0.0, 1.0);
+end;
+
+function TMusicTempoTable.LookupVolume(TimeSeconds: Double;
+  out Level: Double): Boolean;
+var
+  Envelope, NoteLevel: Double;
+  HighIndex, I, LowIndex, Middle, StartIndex: Integer;
+begin
+  Level := 0;
+  Result := Length(FNotes) > 0;
+  if not Result then
+    Exit;
+  if TimeSeconds < 0 then
+    Exit;
+
+  LowIndex := 0;
+  HighIndex := High(FNotes);
+  StartIndex := -1;
+  while LowIndex <= HighIndex do
+  begin
+    Middle := LowIndex + (HighIndex - LowIndex) div 2;
+    if FNotes[Middle].StartSeconds <= TimeSeconds then
+    begin
+      StartIndex := Middle;
+      LowIndex := Middle + 1;
+    end
+    else
+      HighIndex := Middle - 1;
+  end;
+
+  I := StartIndex;
+  while (I >= 0) and
+    (FNotes[I].StartSeconds >= TimeSeconds - FMaxNoteDuration) do
+  begin
+    if TimeSeconds < FNotes[I].EndSeconds then
+    begin
+      Envelope := CalculateNoteEnvelope(FNotes[I], TimeSeconds);
+      NoteLevel := EnsureRange(FNotes[I].Velocity / 127.0 *
+        Envelope, 0.0, 1.0);
+      if NoteLevel > Level then
+        Level := NoteLevel;
+    end;
+    Dec(I);
+  end;
+end;
+
+function TMusicTempoTable.LookupPitch(TimeSeconds: Double;
+  out NoteNumber, Envelope: Double): Boolean;
+var
+  ActiveStrength, BestStrength: Double;
+  HighIndex, I, LowIndex, Middle, StartIndex: Integer;
+begin
+  NoteNumber := 0;
+  Envelope := 0;
+  Result := Length(FNotes) > 0;
+  if not Result or (TimeSeconds < 0) then
+    Exit;
+
+  LowIndex := 0;
+  HighIndex := High(FNotes);
+  StartIndex := -1;
+  while LowIndex <= HighIndex do
+  begin
+    Middle := LowIndex + (HighIndex - LowIndex) div 2;
+    if FNotes[Middle].StartSeconds <= TimeSeconds then
+    begin
+      StartIndex := Middle;
+      LowIndex := Middle + 1;
+    end
+    else
+      HighIndex := Middle - 1;
+  end;
+
+  BestStrength := 0;
+  I := StartIndex;
+  while (I >= 0) and
+    (FNotes[I].StartSeconds >= TimeSeconds - FMaxNoteDuration) do
+  begin
+    if TimeSeconds < FNotes[I].EndSeconds then
+    begin
+      ActiveStrength := FNotes[I].Velocity / 127.0 *
+        CalculateNoteEnvelope(FNotes[I], TimeSeconds);
+      if ActiveStrength > BestStrength then
+      begin
+        BestStrength := ActiveStrength;
+        NoteNumber := FNotes[I].Key;
+        Envelope := CalculateNoteEnvelope(FNotes[I], TimeSeconds);
+      end;
+    end;
+    Dec(I);
+  end;
+  Result := BestStrength > 0;
 end;
 
 destructor TMusicTempoCacheEntry.Destroy;
@@ -312,6 +500,90 @@ begin
     SegmentStartSeconds);
   if Result then
     SegmentStartFrame := SegmentStartSeconds * Rate / Scale;
+end;
+
+function TryGetMusicVolume(const FileName: string; TimeSeconds: Double;
+  out Level: Double): Boolean;
+var
+  Age: Integer;
+  Entry: TMusicTempoCacheEntry;
+  FullName, Key: string;
+  Size: Int64;
+begin
+  Level := 0;
+  Result := False;
+  if Trim(FileName) = '' then
+    Exit;
+
+  try
+    FullName := ExpandFileName(FileName);
+    if not ReadFileIdentity(FullName, Age, Size) then
+      Exit;
+    Key := LowerCase(FullName);
+
+    InitializeMusicTempoCache;
+    if (MusicTempoLock = nil) or (MusicTempoCache = nil) then
+      Exit;
+    MusicTempoLock.Acquire;
+    try
+      if not MusicTempoCache.TryGetValue(Key, Entry) or
+        (Entry.FileAge <> Age) or (Entry.FileSize <> Size) then
+      begin
+        Entry := LoadCacheEntry(FullName, Age, Size);
+        MusicTempoCache.AddOrSetValue(Key, Entry);
+      end;
+      Result := Entry.IsValid and Entry.Table.LookupVolume(
+        TimeSeconds, Level);
+    finally
+      MusicTempoLock.Release;
+    end;
+  except
+    Level := 0;
+    Result := False;
+  end;
+end;
+
+function TryGetMusicPitch(const FileName: string; TimeSeconds: Double;
+  out NoteNumber, Envelope: Double): Boolean;
+var
+  Age: Integer;
+  Entry: TMusicTempoCacheEntry;
+  FullName, Key: string;
+  Size: Int64;
+begin
+  NoteNumber := 0;
+  Envelope := 0;
+  Result := False;
+  if Trim(FileName) = '' then
+    Exit;
+
+  try
+    FullName := ExpandFileName(FileName);
+    if not ReadFileIdentity(FullName, Age, Size) then
+      Exit;
+    Key := LowerCase(FullName);
+
+    InitializeMusicTempoCache;
+    if (MusicTempoLock = nil) or (MusicTempoCache = nil) then
+      Exit;
+    MusicTempoLock.Acquire;
+    try
+      if not MusicTempoCache.TryGetValue(Key, Entry) or
+        (Entry.FileAge <> Age) or (Entry.FileSize <> Size) then
+      begin
+        Entry := LoadCacheEntry(FullName, Age, Size);
+        MusicTempoCache.AddOrSetValue(Key, Entry);
+      end;
+      Result := Entry.IsValid and Entry.Table.LookupPitch(
+        TimeSeconds, NoteNumber, Envelope);
+    finally
+      MusicTempoLock.Release;
+    end;
+  except
+    NoteNumber := 0;
+    Envelope := 0;
+    Result := False;
+  end;
 end;
 
 initialization
