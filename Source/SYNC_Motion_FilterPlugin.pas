@@ -16,9 +16,8 @@ implementation
 uses
   System.Math,
   System.SysUtils,
-  SYNC_Motion_FrameShared,
-  SYNC_Motion_ContextManager,
   SYNC_Motion_MusicTempo,
+  SYNC_Motion_Time,
   SYNC_Motion_TempoMotion;
 
 const
@@ -32,15 +31,18 @@ const
 var
   MusicFileItem       : TFILTER_ITEM_FILE;
   TempoItem           : TFILTER_ITEM_TRACK;
+  SongShiftItem       : TFILTER_ITEM_TRACK;
   MotionShiftItem     : TFILTER_ITEM_TRACK;
   PresetItem          : TFILTER_ITEM_SELECT;
   PresetList          : array[0..2] of TFILTER_ITEM_SELECT_ITEM;
   PresetApplyButton   : TFILTER_ITEM_BUTTON;
   RhythmGroup         : TFILTER_ITEM_GROUP;
   RhythmTypeItem      : TFILTER_ITEM_SELECT;
-  RhythmTypeList      : array[0..4] of TFILTER_ITEM_SELECT_ITEM;
+  RhythmTypeList      : array[0..5] of TFILTER_ITEM_SELECT_ITEM;
   RhythmStrengthItem  : TFILTER_ITEM_TRACK;
   RhythmSpeedItem     : TFILTER_ITEM_TRACK;
+  RhythmParam1Item    : TFILTER_ITEM_TRACK;
+  RhythmParam2Item    : TFILTER_ITEM_TRACK;
   VolumeGroup         : TFILTER_ITEM_GROUP;
   VolumeTypeItem      : TFILTER_ITEM_SELECT;
   VolumeTypeList      : array[0..2] of TFILTER_ITEM_SELECT_ITEM;
@@ -55,6 +57,8 @@ var
 procedure ApplyPresetToLocalItems(Preset: Integer);
 begin
   RhythmSpeedItem.Value := 2.00;
+  RhythmParam1Item.Value := 50.00;
+  RhythmParam2Item.Value := 50.00;
   PitchBaseNoteItem.Value := 60.00;
   case Preset of
     PRESET_BASIC:
@@ -103,6 +107,8 @@ begin
     SetPresetObjectItem(Edit, Obj, '強さ', UTF8String('0'));
   end;
   SetPresetObjectItem(Edit, Obj, '速さ', UTF8String('2'));
+  SetPresetObjectItem(Edit, Obj, 'Param1', UTF8String('50'));
+  SetPresetObjectItem(Edit, Obj, 'Param2', UTF8String('50'));
   SetPresetObjectItem(Edit, Obj, '音量タイプ', UTF8String('0'));
   SetPresetObjectItem(Edit, Obj, '音量強さ', UTF8String('0'));
   SetPresetObjectItem(Edit, Obj, '音程タイプ', UTF8String('0'));
@@ -134,7 +140,8 @@ begin
     Exit;
 
   ApplyRhythmMotion(Video, TRhythmMotionType(RhythmTypeItem.Value),
-    BeatPosition, RhythmSpeedItem.Value, RhythmStrengthItem.Value);
+    BeatPosition, RhythmSpeedItem.Value, RhythmStrengthItem.Value,
+    RhythmParam1Item.Value, RhythmParam2Item.Value);
 end;
 
 procedure ApplySelectedMusicMotion(Video: PFILTER_PROC_VIDEO;
@@ -164,33 +171,30 @@ begin
     BeatPosition, RhythmSpeedItem.Value, RhythmStrengthItem.Value,
     Level, VolumeStrength, NoteNumber, NoteEnvelope,
     PitchBaseNoteItem.Value, PitchHighPullItem.Value,
-    PitchLowSinkItem.Value);
+    PitchLowSinkItem.Value, RhythmParam1Item.Value,
+    RhythmParam2Item.Value);
 end;
 
 function MotionProcVideo(Video: PFILTER_PROC_VIDEO): Byte; cdecl;
 var
   AdjustedTime, BeatPosition, SegmentStartSeconds, TempoBpm: Double;
-  EffectiveState: TSyncMotionFrameState;
-  FrameState: TSyncMotionFrameState;
+  LocalTime: Double;
   MusicFileName: string;
 begin
   try
-    if TryReadMotionFrame(FrameState) and
-      ResolveMotionFrameState(Video, FrameState, EffectiveState) then
+    if TryGetMotionTimeSeconds(Video, LocalTime) then
     begin
       MusicFileName := Trim(string(MusicFileItem.Value));
+      AdjustedTime := CalculateAdjustedMotionTime(LocalTime,
+        SongShiftItem.Value, MotionShiftItem.Value);
       if MusicFileName = '' then
       begin
-        AdjustedTime := EffectiveState.TimeSeconds - MotionShiftItem.Value;
         if AdjustedTime >= 0 then
           ApplySelectedRhythmMotion(Video,
             AdjustedTime * TempoItem.Value / 60.0);
       end
       else
       begin
-        // 音楽ファイル指定時もInput開始時間を含む共有時刻を使う。
-        // 正のオフセットは動きを遅延させ、負の値は先行させる。
-        AdjustedTime := EffectiveState.TimeSeconds - MotionShiftItem.Value;
         if (AdjustedTime >= 0) and
           TryGetMusicSync(MusicFileName, AdjustedTime, BeatPosition,
             TempoBpm, SegmentStartSeconds) then
@@ -207,7 +211,7 @@ begin
 end;
 
 var
-  PluginItems: array[0..17] of Pointer;
+  PluginItems: array[0..20] of Pointer;
   Plugin: TFILTER_PLUGIN_TABLE = (
     Flag: FILTER_FLAG_VIDEO or FILTER_FLAG_FILTER;
     Name: 'SYNC_音楽同期アニメーション_Filter';
@@ -238,6 +242,15 @@ begin
     TempoItem.E := 999.99;
     TempoItem.Step := 0.01;
 
+    // 曲全体の位置合わせ用。秒単位で長時間の素材まで移動できる。
+    SongShiftItem.ItemType := 'track';
+    SongShiftItem.Name := '曲ずらし';
+    SongShiftItem.Value := 0.00;
+    SongShiftItem.S := -86400.00;
+    SongShiftItem.E := 86400.00;
+    SongShiftItem.Step := 1.00;
+
+    // 拍位置を追い込むための細かな調整値。既存設定との互換性を維持する。
     MotionShiftItem.ItemType := 'track';
     MotionShiftItem.Name := 'ずらし';
     MotionShiftItem.Value := 0.00;
@@ -269,10 +282,12 @@ begin
     RhythmTypeList[1].Value := Ord(rmtVerticalJump);
     RhythmTypeList[2].Name := '縮小';
     RhythmTypeList[2].Value := Ord(rmtShrink);
-    RhythmTypeList[3].Name := '振り子';
+    RhythmTypeList[3].Name := '振り子（2拍）';
     RhythmTypeList[3].Value := Ord(rmtPendulum);
-    RhythmTypeList[4].Name := nil;
-    RhythmTypeList[4].Value := 0;
+    RhythmTypeList[4].Name := '振り子（4拍）';
+    RhythmTypeList[4].Value := Ord(rmtPendulumFourBeat);
+    RhythmTypeList[5].Name := nil;
+    RhythmTypeList[5].Value := 0;
     RhythmTypeItem.ItemType := 'select';
     RhythmTypeItem.Name := 'リズムタイプ';
     RhythmTypeItem.Value := Ord(rmtVerticalJump);
@@ -291,6 +306,20 @@ begin
     RhythmSpeedItem.S := 1.00;
     RhythmSpeedItem.E := 100.00;
     RhythmSpeedItem.Step := 0.10;
+
+    RhythmParam1Item.ItemType := 'track';
+    RhythmParam1Item.Name := 'Param1';
+    RhythmParam1Item.Value := 50.00;
+    RhythmParam1Item.S := 0.00;
+    RhythmParam1Item.E := 100.00;
+    RhythmParam1Item.Step := 1.00;
+
+    RhythmParam2Item.ItemType := 'track';
+    RhythmParam2Item.Name := 'Param2';
+    RhythmParam2Item.Value := 50.00;
+    RhythmParam2Item.S := 0.00;
+    RhythmParam2Item.E := 100.00;
+    RhythmParam2Item.Step := 1.00;
 
     VolumeGroup.ItemType := 'group';
     VolumeGroup.Name := '音量';
@@ -353,22 +382,25 @@ begin
     // AviUtl2はnil終端された項目ポインター配列を参照する。
     PluginItems[0] := @MusicFileItem;
     PluginItems[1] := @TempoItem;
-    PluginItems[2] := @MotionShiftItem;
-    PluginItems[3] := @PresetItem;
-    PluginItems[4] := @PresetApplyButton;
-    PluginItems[5] := @RhythmGroup;
-    PluginItems[6] := @RhythmTypeItem;
-    PluginItems[7] := @RhythmStrengthItem;
-    PluginItems[8] := @RhythmSpeedItem;
-    PluginItems[9] := @VolumeGroup;
-    PluginItems[10] := @VolumeTypeItem;
-    PluginItems[11] := @VolumeStrengthItem;
-    PluginItems[12] := @PitchGroup;
-    PluginItems[13] := @PitchTypeItem;
-    PluginItems[14] := @PitchHighPullItem;
-    PluginItems[15] := @PitchLowSinkItem;
-    PluginItems[16] := @PitchBaseNoteItem;
-    PluginItems[17] := nil;
+    PluginItems[2] := @SongShiftItem;
+    PluginItems[3] := @MotionShiftItem;
+    PluginItems[4] := @PresetItem;
+    PluginItems[5] := @PresetApplyButton;
+    PluginItems[6] := @RhythmGroup;
+    PluginItems[7] := @RhythmTypeItem;
+    PluginItems[8] := @RhythmStrengthItem;
+    PluginItems[9] := @RhythmSpeedItem;
+    PluginItems[10] := @RhythmParam1Item;
+    PluginItems[11] := @RhythmParam2Item;
+    PluginItems[12] := @VolumeGroup;
+    PluginItems[13] := @VolumeTypeItem;
+    PluginItems[14] := @VolumeStrengthItem;
+    PluginItems[15] := @PitchGroup;
+    PluginItems[16] := @PitchTypeItem;
+    PluginItems[17] := @PitchHighPullItem;
+    PluginItems[18] := @PitchLowSinkItem;
+    PluginItems[19] := @PitchBaseNoteItem;
+    PluginItems[20] := nil;
     Plugin.Items := @PluginItems[0];
   end;
   Result := @Plugin;
@@ -376,16 +408,12 @@ end;
 
 procedure InitializeMotionFilter;
 begin
-  InitializeMotionFrameShared;
-  InitializeMotionContexts;
   InitializeMusicTempoCache;
 end;
 
 procedure FinalizeMotionFilter;
 begin
   FinalizeMusicTempoCache;
-  FinalizeMotionContexts;
-  FinalizeMotionFrameShared;
 end;
 
 end.

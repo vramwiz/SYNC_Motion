@@ -95,8 +95,6 @@
             <MainSource>MainSource</MainSource>
         </DelphiCompile>
         <DCCReference Include="Source\Lib\AviUtl2FilterTypes.pas"/>
-        <DCCReference Include="Source\Lib\SharedMemoryBase.pas"/>
-        <DCCReference Include="Source\Lib\SYNC_Motion_FrameShared.pas"/>
         <DCCReference Include="Source\Lib\SongReader\RTTIPersistent.pas"/>
         <DCCReference Include="Source\Lib\SongReader\RTTIPersistentIni.pas"/>
         <DCCReference Include="Source\Lib\SongReader\SectionFileManager.pas"/>
@@ -115,8 +113,8 @@
         <DCCReference Include="Source\Lib\SongReader\SongReaderMusicMSC.pas"/>
         <DCCReference Include="Source\Lib\SongReader\SongReaderMusicMSCZ.pas"/>
         <DCCReference Include="Source\Lib\SongReader\SongReaderManager.pas"/>
-        <DCCReference Include="Source\SYNC_Motion_ContextManager.pas"/>
         <DCCReference Include="Source\SYNC_Motion_MusicTempo.pas"/>
+        <DCCReference Include="Source\SYNC_Motion_Time.pas"/>
         <DCCReference Include="Source\SYNC_Motion_TempoMotion.pas"/>
         <DCCReference Include="Source\SYNC_Motion_FilterPlugin.pas"/>
         <BuildConfiguration Include="Base">

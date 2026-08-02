@@ -111,12 +111,16 @@ begin
     'shrink image mismatch');
 
   ClearTestImage;
-  TestImageInput[2 * TEST_IMAGE_SIZE + 2].R := 255;
-  TestImageInput[2 * TEST_IMAGE_SIZE + 2].A := 255;
+  TestImageInput[0 * TEST_IMAGE_SIZE + 1].R := 255;
+  TestImageInput[0 * TEST_IMAGE_SIZE + 1].A := 255;
+  TestImageInput[4 * TEST_IMAGE_SIZE + 2].G := 255;
+  TestImageInput[4 * TEST_IMAGE_SIZE + 2].A := 255;
   ApplyRhythmMotion(@Video, rmtPendulum, 0.25, 2.0, 2.4);
   Require(TestImageWasSet and
-    (TestImageOutput[3 * TEST_IMAGE_SIZE + 4].R = 255),
-    'pendulum image mismatch');
+    (TestImageOutput[0 * TEST_IMAGE_SIZE + 3].R = 255),
+    'pendulum top deformation mismatch');
+  Require(TestImageOutput[4 * TEST_IMAGE_SIZE + 2].G = 255,
+    'pendulum bottom anchor mismatch');
 
   ClearTestImage;
   TestImageInput[2 * TEST_IMAGE_SIZE + 2].R := 255;
@@ -198,6 +202,7 @@ begin
       'none rhythm offset mismatch');
     RequireNear(1.0, Transform.Scale, 'none rhythm scale');
     RequireNear(0.0, Transform.AngleDegrees, 'none rhythm angle');
+    RequireNear(0.0, Transform.TopOffsetX, 'none rhythm deformation');
     CalculateRhythmTransform(rmtVerticalJump, 0.0, 2.0, 50.0,
       Transform);
     Require((Transform.OffsetX = 0) and (Transform.OffsetY = 0),
@@ -219,15 +224,70 @@ begin
     CalculateRhythmTransform(rmtPendulum, 0.0, 2.0, 40.0, Transform);
     Require((Transform.OffsetX = 0) and (Transform.OffsetY = 0),
       'pendulum center start mismatch');
+    RequireNear(0.0, Transform.TopOffsetX,
+      'pendulum deformation start mismatch');
     CalculateRhythmTransform(rmtPendulum, 0.25, 2.0, 40.0, Transform);
-    Require((Transform.OffsetX = 40) and (Transform.OffsetY = 10),
-      'pendulum right position mismatch');
+    Require((Transform.OffsetX = 0) and (Transform.OffsetY = 0),
+      'pendulum must not translate image');
+    RequireNear(40.0 / Sqrt(2.0), Transform.TopOffsetX,
+      'pendulum right deformation mismatch');
+    RequireNear(0.475, Transform.WaistRatio,
+      'pendulum default waist mismatch');
+    RequireNear(0.5, Transform.JointFlexibility,
+      'pendulum default flexibility mismatch');
+    CalculateRhythmTransform(rmtPendulum, 0.25, 2.0, 40.0, Transform,
+      0.0, 100.0);
+    RequireNear(0.35, Transform.WaistRatio,
+      'pendulum low waist mismatch');
+    RequireNear(1.0, Transform.JointFlexibility,
+      'pendulum full flexibility mismatch');
+    CalculateRhythmTransform(rmtPendulum, 0.25, 2.0, 40.0, Transform,
+      100.0, 0.0);
+    RequireNear(0.6, Transform.WaistRatio,
+      'pendulum high waist mismatch');
+    RequireNear(0.0, Transform.JointFlexibility,
+      'pendulum rigid flexibility mismatch');
     CalculateRhythmTransform(rmtPendulum, 0.5, 2.0, 40.0, Transform);
+    RequireNear(40.0, Transform.TopOffsetX,
+      'pendulum right maximum mismatch');
+    CalculateRhythmTransform(rmtPendulum, 1.0, 2.0, 40.0, Transform);
     Require((Transform.OffsetX = 0) and (Transform.OffsetY = 0),
       'pendulum center return mismatch');
-    CalculateRhythmTransform(rmtPendulum, 0.75, 2.0, 40.0, Transform);
-    Require((Transform.OffsetX = -40) and (Transform.OffsetY = 10),
-      'pendulum left position mismatch');
+    RequireNear(0.0, Transform.TopOffsetX,
+      'pendulum deformation return mismatch');
+    CalculateRhythmTransform(rmtPendulum, 1.5, 2.0, 40.0, Transform);
+    Require((Transform.OffsetX = 0) and (Transform.OffsetY = 0),
+      'pendulum left must not translate image');
+    RequireNear(-40.0, Transform.TopOffsetX,
+      'pendulum left deformation mismatch');
+    CalculateRhythmTransform(rmtPendulumFourBeat, 0.0, 2.0, 40.0,
+      Transform);
+    RequireNear(-40.0, Transform.TopOffsetX,
+      'four beat pendulum left start mismatch');
+    CalculateRhythmTransform(rmtPendulumFourBeat, 0.5, 2.0, 40.0,
+      Transform);
+    RequireNear(0.0, Transform.TopOffsetX,
+      'four beat pendulum first crossing mismatch');
+    CalculateRhythmTransform(rmtPendulumFourBeat, 1.0, 2.0, 40.0,
+      Transform);
+    RequireNear(40.0, Transform.TopOffsetX,
+      'four beat pendulum right arrival mismatch');
+    CalculateRhythmTransform(rmtPendulumFourBeat, 1.5, 2.0, 40.0,
+      Transform);
+    RequireNear(40.0, Transform.TopOffsetX,
+      'four beat pendulum right hold mismatch');
+    CalculateRhythmTransform(rmtPendulumFourBeat, 2.5, 2.0, 40.0,
+      Transform);
+    RequireNear(0.0, Transform.TopOffsetX,
+      'four beat pendulum return crossing mismatch');
+    CalculateRhythmTransform(rmtPendulumFourBeat, 3.0, 2.0, 40.0,
+      Transform);
+    RequireNear(-40.0, Transform.TopOffsetX,
+      'four beat pendulum left arrival mismatch');
+    CalculateRhythmTransform(rmtPendulumFourBeat, 3.5, 2.0, 40.0,
+      Transform);
+    RequireNear(-40.0, Transform.TopOffsetX,
+      'four beat pendulum left hold mismatch');
     Require(TryGetMusicVolume(VelocityFile, 0.0, Level),
       'velocity lookup at note start failed');
     RequireNear(0.0, Level, 'velocity attack start');

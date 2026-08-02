@@ -7,8 +7,6 @@
 uses
   Winapi.Windows,
   AviUtl2FilterTypes in 'Source\Lib\AviUtl2FilterTypes.pas',
-  SharedMemoryBase in 'Source\Lib\SharedMemoryBase.pas',
-  SYNC_Motion_FrameShared in 'Source\Lib\SYNC_Motion_FrameShared.pas',
   RTTIPersistent in 'Source\Lib\SongReader\RTTIPersistent.pas',
   RTTIPersistentIni in 'Source\Lib\SongReader\RTTIPersistentIni.pas',
   SectionFileManager in 'Source\Lib\SongReader\SectionFileManager.pas',
@@ -27,8 +25,8 @@ uses
   SongReaderMusicMSC in 'Source\Lib\SongReader\SongReaderMusicMSC.pas',
   SongReaderMusicMSCZ in 'Source\Lib\SongReader\SongReaderMusicMSCZ.pas',
   SongReaderManager in 'Source\Lib\SongReader\SongReaderManager.pas',
-  SYNC_Motion_ContextManager in 'Source\SYNC_Motion_ContextManager.pas',
   SYNC_Motion_MusicTempo in 'Source\SYNC_Motion_MusicTempo.pas',
+  SYNC_Motion_Time in 'Source\SYNC_Motion_Time.pas',
   SYNC_Motion_TempoMotion in 'Source\SYNC_Motion_TempoMotion.pas',
   SYNC_Motion_FilterPlugin in 'Source\SYNC_Motion_FilterPlugin.pas';
 

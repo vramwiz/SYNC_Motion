@@ -1,4 +1,4 @@
-unit SYNC_Motion_TempoMotion;
+﻿unit SYNC_Motion_TempoMotion;
 
 // 拍位置と共通設定からリズム変形を求め、処理対象画像へ適用する。
 
@@ -13,13 +13,17 @@ type
     rmtVerticalJump,
     rmtHorizontalJump,
     rmtShrink,
-    rmtPendulum
+    rmtPendulum,
+    rmtPendulumFourBeat
   );
 
   TRhythmTransform = record
     OffsetX, OffsetY: Integer; // 元画像の中心位置からの移動量。
     Scale           : Double;  // 1.0を原寸とする中心基準の拡大率。
     AngleDegrees    : Double;  // 正方向を時計回りとする回転角度。
+    TopOffsetX      : Double;  // 下端を固定したまま上端を横へ動かす変形量。
+    WaistRatio      : Double;  // 下端を0、上端を1とする振り子の腰位置。
+    JointFlexibility: Double;  // 0を一様傾斜、1を腰・首の区分変形とする混合率。
   end;
 
 procedure CalculateJumpVector(BeatPosition, Speed, WidthPixels,
@@ -27,16 +31,20 @@ procedure CalculateJumpVector(BeatPosition, Speed, WidthPixels,
 procedure ApplyBeatMotion(Video: PFILTER_PROC_VIDEO; BeatPosition,
   Speed, WidthPixels, AngleDegrees: Double);
 procedure CalculateRhythmTransform(MotionType: TRhythmMotionType;
-  BeatPosition, Speed, Strength: Double; out Transform: TRhythmTransform);
+  BeatPosition, Speed, Strength: Double; out Transform: TRhythmTransform;
+  Param1: Double = 50.0; Param2: Double = 50.0);
 procedure ApplyRhythmMotion(Video: PFILTER_PROC_VIDEO;
-  MotionType: TRhythmMotionType; BeatPosition, Speed, Strength: Double);
+  MotionType: TRhythmMotionType; BeatPosition, Speed, Strength: Double;
+  Param1: Double = 50.0; Param2: Double = 50.0);
 procedure ApplyRhythmVolumeMotion(Video: PFILTER_PROC_VIDEO;
   MotionType: TRhythmMotionType; BeatPosition, Speed, RhythmStrength,
-  VolumeLevel, VolumeStrength: Double);
+  VolumeLevel, VolumeStrength: Double; Param1: Double = 50.0;
+  Param2: Double = 50.0);
 procedure ApplyMusicMotion(Video: PFILTER_PROC_VIDEO;
   MotionType: TRhythmMotionType; BeatPosition, Speed, RhythmStrength,
   VolumeLevel, VolumeStrength, NoteNumber, PitchEnvelope, BaseNote,
-  HighPull, LowSink: Double);
+  HighPull, LowSink: Double; Param1: Double = 50.0;
+  Param2: Double = 50.0);
 function CalculateVolumeScale(Level, Strength: Double): Double;
 function CalculatePitchOffset(NoteNumber, Envelope, BaseNote,
   HighPull, LowSink: Double): Integer;
@@ -72,6 +80,26 @@ begin
   Result := True;
 end;
 
+function CalculateFourBeatPendulumSwing(BeatPosition, Speed: Double): Double;
+var
+  Phase: Double;
+begin
+  if Speed <= 0 then
+    Exit(0);
+
+  // 既定の速さ2では、移動、保持、逆移動、保持を各1拍ずつ行う。
+  Phase := BeatPosition * Speed / 2.0;
+  Phase := Phase - Floor(Phase / 4.0) * 4.0;
+  if Phase < 1.0 then
+    Result := -Cos(Phase * Pi)
+  else if Phase < 2.0 then
+    Result := 1.0
+  else if Phase < 3.0 then
+    Result := Cos((Phase - 2.0) * Pi)
+  else
+    Result := -1.0;
+end;
+
 procedure CalculateJumpVector(BeatPosition, Speed, WidthPixels,
   AngleDegrees: Double; out OffsetX, OffsetY: Integer);
 var
@@ -95,7 +123,8 @@ begin
 end;
 
 procedure CalculateRhythmTransform(MotionType: TRhythmMotionType;
-  BeatPosition, Speed, Strength: Double; out Transform: TRhythmTransform);
+  BeatPosition, Speed, Strength: Double; out Transform: TRhythmTransform;
+  Param1, Param2: Double);
 var
   Curve, Progress, Swing: Double;
 begin
@@ -103,15 +132,22 @@ begin
   Transform.OffsetY := 0;
   Transform.Scale := 1.0;
   Transform.AngleDegrees := 0;
+  Transform.TopOffsetX := 0;
+  Transform.WaistRatio := 0.475;
+  Transform.JointFlexibility := 0.5;
   if (MotionType = rmtNone) or SameValue(Strength, 0) then
     Exit;
 
-  if MotionType = rmtPendulum then
+  if MotionType in [rmtPendulum, rmtPendulumFourBeat] then
   begin
-    // 確認用に最初の実装の4倍速とし、既定の速さ2では1/4拍ごとに左右の最大点を通る。
-    Swing := Sin(BeatPosition * Speed * Pi);
-    Transform.OffsetX := Round(Strength * Swing);
-    Transform.OffsetY := Round(Abs(Strength) * 0.25 * Sqr(Swing));
+    if MotionType = rmtPendulumFourBeat then
+      Swing := CalculateFourBeatPendulumSwing(BeatPosition, Speed)
+    else
+      // 既定の速さ2では2拍で1往復し、半拍ごとに中央と左右の最大点を通る。
+      Swing := Sin(BeatPosition * Speed * Pi / 2.0);
+    Transform.TopOffsetX := Strength * Swing;
+    Transform.WaistRatio := 0.35 + EnsureRange(Param1, 0.0, 100.0) * 0.0025;
+    Transform.JointFlexibility := EnsureRange(Param2, 0.0, 100.0) / 100.0;
     Exit;
   end;
 
@@ -131,7 +167,41 @@ function IsIdentityTransform(const Transform: TRhythmTransform): Boolean;
 begin
   Result := (Transform.OffsetX = 0) and (Transform.OffsetY = 0) and
     SameValue(Transform.Scale, 1.0) and
-    SameValue(Transform.AngleDegrees, 0);
+    SameValue(Transform.AngleDegrees, 0) and
+    SameValue(Transform.TopOffsetX, 0);
+end;
+
+function SmoothStep(Value: Double): Double;
+begin
+  Value := EnsureRange(Value, 0.0, 1.0);
+  Result := Value * Value * (3.0 - 2.0 * Value);
+end;
+
+function CalculatePendulumWeight(HeightRatio, WaistRatio,
+  JointFlexibility: Double): Double;
+const
+  WAIST_MOVEMENT_RATIO = 0.35;
+var
+  NeckRatio, SegmentedWeight: Double;
+begin
+  HeightRatio := EnsureRange(HeightRatio, 0.0, 1.0);
+  WaistRatio := EnsureRange(WaistRatio, 0.2, 0.75);
+  JointFlexibility := EnsureRange(JointFlexibility, 0.0, 1.0);
+  NeckRatio := Min(0.9, WaistRatio + 0.3);
+
+  if HeightRatio <= WaistRatio then
+    SegmentedWeight := WAIST_MOVEMENT_RATIO *
+      SmoothStep(HeightRatio / WaistRatio)
+  else if HeightRatio < NeckRatio then
+    SegmentedWeight := WAIST_MOVEMENT_RATIO +
+      (1.0 - WAIST_MOVEMENT_RATIO) *
+      SmoothStep((HeightRatio - WaistRatio) / (NeckRatio - WaistRatio))
+  else
+    // 首より上は同じ量だけ動かし、顔と頭部の形を保つ。
+    SegmentedWeight := 1.0;
+
+  Result := HeightRatio +
+    (SegmentedWeight - HeightRatio) * JointFlexibility;
 end;
 
 procedure ShiftImage(Source, Dest: PPixelArray;
@@ -169,7 +239,8 @@ procedure TransformImage(Source, Dest: PPixelArray; Width, Height: Integer;
   const Transform: TRhythmTransform);
 var
   CenterX, CenterY, CosAngle, DestCenterX, DestCenterY: Double;
-  InverseScale, Radians, SinAngle, SourceCenterX, SourceCenterY: Double;
+  DeformedCenterX, DeformedCenterY, HeightRatio, InverseScale: Double;
+  Radians, SinAngle, SourcePositionX, SourcePositionY: Double;
   DestX, DestY, SourceX, SourceY: Integer;
 begin
   CenterX := (Width - 1) / 2.0;
@@ -185,12 +256,23 @@ begin
     begin
       DestCenterX := DestX - CenterX - Transform.OffsetX;
       DestCenterY := DestY - CenterY - Transform.OffsetY;
-      SourceCenterX := (CosAngle * DestCenterX +
+      DeformedCenterX := (CosAngle * DestCenterX +
         SinAngle * DestCenterY) * InverseScale;
-      SourceCenterY := (-SinAngle * DestCenterX +
+      DeformedCenterY := (-SinAngle * DestCenterX +
         CosAngle * DestCenterY) * InverseScale;
-      SourceX := Round(CenterX + SourceCenterX);
-      SourceY := Round(CenterY + SourceCenterY);
+      SourcePositionY := CenterY + DeformedCenterY;
+      if Height > 1 then
+      begin
+        HeightRatio := EnsureRange((Height - 1 - SourcePositionY) /
+          (Height - 1), 0.0, 1.0);
+        SourcePositionX := CenterX + DeformedCenterX -
+          Transform.TopOffsetX * CalculatePendulumWeight(HeightRatio,
+            Transform.WaistRatio, Transform.JointFlexibility);
+      end
+      else
+        SourcePositionX := CenterX + DeformedCenterX;
+      SourceX := Round(SourcePositionX);
+      SourceY := Round(SourcePositionY);
       if (SourceX >= 0) and (SourceX < Width) and
         (SourceY >= 0) and (SourceY < Height) then
         Dest^[DestY * Width + DestX] := Source^[SourceY * Width + SourceX];
@@ -227,7 +309,8 @@ begin
     Video^.GetImageData(PPIXEL_RGBA(Source));
     FillChar(Dest^, BufferSize, 0);
     if SameValue(Transform.Scale, 1.0) and
-      SameValue(Transform.AngleDegrees, 0) then
+      SameValue(Transform.AngleDegrees, 0) and
+      SameValue(Transform.TopOffsetX, 0) then
       ShiftImage(Source, Dest, Width, Height, Transform.OffsetX,
         Transform.OffsetY)
     else
@@ -246,35 +329,39 @@ var
 begin
   Transform.Scale := 1.0;
   Transform.AngleDegrees := 0;
+  Transform.TopOffsetX := 0;
+  Transform.WaistRatio := 0.475;
+  Transform.JointFlexibility := 0.5;
   CalculateJumpVector(BeatPosition, Speed, WidthPixels, AngleDegrees,
     Transform.OffsetX, Transform.OffsetY);
   ApplyTransform(Video, Transform);
 end;
 
 procedure ApplyRhythmMotion(Video: PFILTER_PROC_VIDEO;
-  MotionType: TRhythmMotionType; BeatPosition, Speed, Strength: Double);
+  MotionType: TRhythmMotionType; BeatPosition, Speed, Strength, Param1,
+  Param2: Double);
 begin
   ApplyRhythmVolumeMotion(Video, MotionType, BeatPosition, Speed, Strength,
-    0, 0);
+    0, 0, Param1, Param2);
 end;
 
 procedure ApplyRhythmVolumeMotion(Video: PFILTER_PROC_VIDEO;
   MotionType: TRhythmMotionType; BeatPosition, Speed, RhythmStrength,
-  VolumeLevel, VolumeStrength: Double);
+  VolumeLevel, VolumeStrength, Param1, Param2: Double);
 begin
   ApplyMusicMotion(Video, MotionType, BeatPosition, Speed, RhythmStrength,
-    VolumeLevel, VolumeStrength, 0, 0, 60, 0, 0);
+    VolumeLevel, VolumeStrength, 0, 0, 60, 0, 0, Param1, Param2);
 end;
 
 procedure ApplyMusicMotion(Video: PFILTER_PROC_VIDEO;
   MotionType: TRhythmMotionType; BeatPosition, Speed, RhythmStrength,
   VolumeLevel, VolumeStrength, NoteNumber, PitchEnvelope, BaseNote,
-  HighPull, LowSink: Double);
+  HighPull, LowSink, Param1, Param2: Double);
 var
   Transform: TRhythmTransform;
 begin
   CalculateRhythmTransform(MotionType, BeatPosition, Speed, RhythmStrength,
-    Transform);
+    Transform, Param1, Param2);
   Transform.Scale := Transform.Scale *
     CalculateVolumeScale(VolumeLevel, VolumeStrength);
   Inc(Transform.OffsetY, CalculatePitchOffset(NoteNumber, PitchEnvelope,
@@ -312,6 +399,9 @@ begin
   Transform.OffsetY := 0;
   Transform.Scale := CalculateVolumeScale(Level, Strength);
   Transform.AngleDegrees := 0;
+  Transform.TopOffsetX := 0;
+  Transform.WaistRatio := 0.475;
+  Transform.JointFlexibility := 0.5;
   ApplyTransform(Video, Transform);
 end;
 
