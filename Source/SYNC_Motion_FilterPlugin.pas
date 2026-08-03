@@ -31,14 +31,14 @@ const
 var
   MusicFileItem       : TFILTER_ITEM_FILE;
   TempoItem           : TFILTER_ITEM_TRACK;
-  SongShiftItem       : TFILTER_ITEM_TRACK;
-  MotionShiftItem     : TFILTER_ITEM_TRACK;
+  OffsetItem          : TFILTER_ITEM_TRACK;
+  RhythmShiftItem     : TFILTER_ITEM_TRACK;
   PresetItem          : TFILTER_ITEM_SELECT;
   PresetList          : array[0..2] of TFILTER_ITEM_SELECT_ITEM;
   PresetApplyButton   : TFILTER_ITEM_BUTTON;
   RhythmGroup         : TFILTER_ITEM_GROUP;
   RhythmTypeItem      : TFILTER_ITEM_SELECT;
-  RhythmTypeList      : array[0..5] of TFILTER_ITEM_SELECT_ITEM;
+  RhythmTypeList      : array[0..7] of TFILTER_ITEM_SELECT_ITEM;
   RhythmStrengthItem  : TFILTER_ITEM_TRACK;
   RhythmSpeedItem     : TFILTER_ITEM_TRACK;
   RhythmParam1Item    : TFILTER_ITEM_TRACK;
@@ -138,7 +138,6 @@ begin
   if (RhythmTypeItem.Value < Ord(Low(TRhythmMotionType))) or
     (RhythmTypeItem.Value > Ord(High(TRhythmMotionType))) then
     Exit;
-
   ApplyRhythmMotion(Video, TRhythmMotionType(RhythmTypeItem.Value),
     BeatPosition, RhythmSpeedItem.Value, RhythmStrengthItem.Value,
     RhythmParam1Item.Value, RhythmParam2Item.Value);
@@ -177,7 +176,7 @@ end;
 
 function MotionProcVideo(Video: PFILTER_PROC_VIDEO): Byte; cdecl;
 var
-  AdjustedTime, BeatPosition, SegmentStartSeconds, TempoBpm: Double;
+  AlignedTime, BeatPosition, SegmentStartSeconds, TempoBpm: Double;
   LocalTime: Double;
   MusicFileName: string;
 begin
@@ -185,22 +184,25 @@ begin
     if TryGetMotionTimeSeconds(Video, LocalTime) then
     begin
       MusicFileName := Trim(string(MusicFileItem.Value));
-      AdjustedTime := CalculateAdjustedMotionTime(LocalTime,
-        SongShiftItem.Value, MotionShiftItem.Value);
+      AlignedTime := CalculateOffsetMotionTime(LocalTime, OffsetItem.Value);
       if MusicFileName = '' then
       begin
-        if AdjustedTime >= 0 then
-          ApplySelectedRhythmMotion(Video,
-            AdjustedTime * TempoItem.Value / 60.0);
+        if AlignedTime >= 0 then
+        begin
+          BeatPosition := CalculateRhythmBeatPosition(
+            AlignedTime * TempoItem.Value / 60.0, RhythmShiftItem.Value);
+          ApplySelectedRhythmMotion(Video, BeatPosition);
+        end;
       end
       else
       begin
-        if (AdjustedTime >= 0) and
-          TryGetMusicSync(MusicFileName, AdjustedTime, BeatPosition,
+        if (AlignedTime >= 0) and
+          TryGetMusicSync(MusicFileName, AlignedTime, BeatPosition,
             TempoBpm, SegmentStartSeconds) then
         begin
-          ApplySelectedMusicMotion(Video, MusicFileName, AdjustedTime,
-            BeatPosition);
+          BeatPosition := CalculateRhythmBeatPosition(BeatPosition,
+            RhythmShiftItem.Value);
+          ApplySelectedMusicMotion(Video, MusicFileName, AlignedTime, BeatPosition);
         end;
       end;
     end;
@@ -242,21 +244,21 @@ begin
     TempoItem.E := 999.99;
     TempoItem.Step := 0.01;
 
-    // 曲全体の位置合わせ用。秒単位で長時間の素材まで移動できる。
-    SongShiftItem.ItemType := 'track';
-    SongShiftItem.Name := '曲ずらし';
-    SongShiftItem.Value := 0.00;
-    SongShiftItem.S := -86400.00;
-    SongShiftItem.E := 86400.00;
-    SongShiftItem.Step := 1.00;
+    // 映像と音楽の開始位置を実時間で合わせる保険用の調整値。
+    OffsetItem.ItemType := 'track';
+    OffsetItem.Name := 'オフセット (秒)';
+    OffsetItem.Value := 0.00;
+    OffsetItem.S := -86400.00;
+    OffsetItem.E := 86400.00;
+    OffsetItem.Step := 0.01;
 
-    // 拍位置を追い込むための細かな調整値。既存設定との互換性を維持する。
-    MotionShiftItem.ItemType := 'track';
-    MotionShiftItem.Name := 'ずらし';
-    MotionShiftItem.Value := 0.00;
-    MotionShiftItem.S := -60.00;
-    MotionShiftItem.E := 60.00;
-    MotionShiftItem.Step := 0.01;
+    // テンポへ追従したまま、リズム変形を拍単位で先行・遅延させる。
+    RhythmShiftItem.ItemType := 'track';
+    RhythmShiftItem.Name := 'リズムずらし (拍)';
+    RhythmShiftItem.Value := 0.00;
+    RhythmShiftItem.S := -4.00;
+    RhythmShiftItem.E := 4.00;
+    RhythmShiftItem.Step := 0.01;
 
     PresetList[0].Name := 'なし';
     PresetList[0].Value := PRESET_NONE;
@@ -282,12 +284,16 @@ begin
     RhythmTypeList[1].Value := Ord(rmtVerticalJump);
     RhythmTypeList[2].Name := '縮小';
     RhythmTypeList[2].Value := Ord(rmtShrink);
-    RhythmTypeList[3].Name := '振り子（2拍）';
-    RhythmTypeList[3].Value := Ord(rmtPendulum);
-    RhythmTypeList[4].Name := '振り子（4拍）';
-    RhythmTypeList[4].Value := Ord(rmtPendulumFourBeat);
-    RhythmTypeList[5].Name := nil;
-    RhythmTypeList[5].Value := 0;
+    RhythmTypeList[3].Name := 'バウンス';
+    RhythmTypeList[3].Value := Ord(rmtBounce);
+    RhythmTypeList[4].Name := 'ステップ';
+    RhythmTypeList[4].Value := Ord(rmtStep);
+    RhythmTypeList[5].Name := '振り子（1拍）';
+    RhythmTypeList[5].Value := Ord(rmtPendulum);
+    RhythmTypeList[6].Name := '振り子（2拍）';
+    RhythmTypeList[6].Value := Ord(rmtPendulumTwoBeat);
+    RhythmTypeList[7].Name := nil;
+    RhythmTypeList[7].Value := 0;
     RhythmTypeItem.ItemType := 'select';
     RhythmTypeItem.Name := 'リズムタイプ';
     RhythmTypeItem.Value := Ord(rmtVerticalJump);
@@ -382,8 +388,8 @@ begin
     // AviUtl2はnil終端された項目ポインター配列を参照する。
     PluginItems[0] := @MusicFileItem;
     PluginItems[1] := @TempoItem;
-    PluginItems[2] := @SongShiftItem;
-    PluginItems[3] := @MotionShiftItem;
+    PluginItems[2] := @OffsetItem;
+    PluginItems[3] := @RhythmShiftItem;
     PluginItems[4] := @PresetItem;
     PluginItems[5] := @PresetApplyButton;
     PluginItems[6] := @RhythmGroup;

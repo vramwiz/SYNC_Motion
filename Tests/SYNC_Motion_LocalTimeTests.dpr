@@ -1,6 +1,6 @@
 ﻿program SYNC_Motion_LocalTimeTests;
 
-// Filter単体のローカル時刻取得と2段階のずらしを検証する。
+// Filter単体のローカル時刻、秒オフセット、拍ずらしを検証する。
 
 {$APPTYPE CONSOLE}
 
@@ -40,12 +40,16 @@ begin
     'local time lookup failed');
   CheckNear(123.456, TimeSeconds, 'local time mismatch');
 
-  CheckNear(110.25, CalculateAdjustedMotionTime(123.25, 10.0, 3.0),
-    'positive shifts must delay motion');
-  CheckNear(136.25, CalculateAdjustedMotionTime(123.25, -10.0, -3.0),
-    'negative shifts must advance motion');
-  CheckNear(123.25, CalculateAdjustedMotionTime(123.25, 0.0, 0.0),
-    'zero shifts must preserve time');
+  CheckNear(113.25, CalculateOffsetMotionTime(123.25, 10.0),
+    'positive offset must delay motion');
+  CheckNear(133.25, CalculateOffsetMotionTime(123.25, -10.0),
+    'negative offset must advance motion');
+  CheckNear(12.0, CalculateRhythmBeatPosition(12.5, 0.5),
+    'positive rhythm shift must delay motion');
+  CheckNear(13.0, CalculateRhythmBeatPosition(12.5, -0.5),
+    'negative rhythm shift must advance motion');
+  CheckNear(123.25, CalculateOffsetMotionTime(123.25, 0.0),
+    'zero offset must preserve time');
 
   Writeln('PASS');
 end.

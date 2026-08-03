@@ -14,12 +14,15 @@ type
     rmtHorizontalJump,
     rmtShrink,
     rmtPendulum,
-    rmtPendulumFourBeat
+    rmtPendulumTwoBeat,
+    rmtStep,
+    rmtBounce
   );
 
   TRhythmTransform = record
     OffsetX, OffsetY: Integer; // 元画像の中心位置からの移動量。
     Scale           : Double;  // 1.0を原寸とする中心基準の拡大率。
+    VerticalScale   : Double;  // 1.0を原寸とする下端固定の縦方向拡大率。
     AngleDegrees    : Double;  // 正方向を時計回りとする回転角度。
     TopOffsetX      : Double;  // 下端を固定したまま上端を横へ動かす変形量。
     WaistRatio      : Double;  // 下端を0、上端を1とする振り子の腰位置。
@@ -144,15 +147,15 @@ begin
   end;
 end;
 
-function CalculateFourBeatPendulumSwing(BeatPosition, Speed: Double): Double;
+function CalculateTwoBeatPendulumSwing(BeatPosition, Speed: Double): Double;
 var
   Phase: Double;
 begin
   if Speed <= 0 then
     Exit(0);
 
-  // 既定の速さ2では、移動、保持、逆移動、保持を各1拍ずつ行う。
-  Phase := BeatPosition * Speed / 2.0;
+  // 既定の速さ2では、移動と保持を各半拍ずつ行い、2拍で1周期とする。
+  Phase := BeatPosition * Speed;
   Phase := Phase - Floor(Phase / 4.0) * 4.0;
   if Phase < 1.0 then
     Result := -Cos(Phase * Pi)
@@ -195,6 +198,7 @@ begin
   Transform.OffsetX := 0;
   Transform.OffsetY := 0;
   Transform.Scale := 1.0;
+  Transform.VerticalScale := 1.0;
   Transform.AngleDegrees := 0;
   Transform.TopOffsetX := 0;
   Transform.WaistRatio := 0.475;
@@ -202,13 +206,47 @@ begin
   if (MotionType = rmtNone) or SameValue(Strength, 0) then
     Exit;
 
-  if MotionType in [rmtPendulum, rmtPendulumFourBeat] then
+  if MotionType = rmtBounce then
   begin
-    if MotionType = rmtPendulumFourBeat then
-      Swing := CalculateFourBeatPendulumSwing(BeatPosition, Speed)
+    if Speed <= 0 then
+      Exit;
+    // 着地で縦に沈み、拍の中間で小さく浮きながらわずかに伸びる。
+    Progress := BeatPosition * Speed / 2.0;
+    Curve := Sqr(Sin(Progress * Pi));
+    Transform.OffsetY := -Round(Strength * 0.25 * Curve);
+    Transform.VerticalScale := 1.0 - Abs(Strength) / 500.0 *
+      (1.0 - Curve) + Abs(Strength) / 1250.0 * Curve;
+    Transform.VerticalScale := EnsureRange(Transform.VerticalScale,
+      0.5, 1.5);
+    Exit;
+  end;
+
+  if MotionType = rmtStep then
+  begin
+    if Speed <= 0 then
+      Exit;
+    // 左右の着地間を1拍で移動し、中央通過時に少し浮かせる。
+    Progress := BeatPosition * Speed / 2.0;
+    Swing := -Cos(Progress * Pi);
+    Transform.OffsetX := Round(Strength * Swing);
+    Transform.OffsetY := -Round(Abs(Strength) * 0.2 *
+      Abs(Sin(Progress * Pi)));
+    // 下半身を着地側へ動かしつつ頭側を元位置付近へ残し、明確な重心変形を作る。
+    Transform.TopOffsetX := -Strength * Swing;
+    Transform.WaistRatio := 0.35 +
+      EnsureRange(Param1, 0.0, 100.0) * 0.0025;
+    Transform.JointFlexibility :=
+      EnsureRange(Param2, 0.0, 100.0) / 100.0;
+    Exit;
+  end;
+
+  if MotionType in [rmtPendulum, rmtPendulumTwoBeat] then
+  begin
+    if MotionType = rmtPendulumTwoBeat then
+      Swing := CalculateTwoBeatPendulumSwing(BeatPosition, Speed)
     else
-      // 既定の速さ2では2拍で1往復し、半拍ごとに中央と左右の最大点を通る。
-      Swing := Sin(BeatPosition * Speed * Pi / 2.0);
+      // 既定の速さ2では1拍で1往復し、4分の1拍ごとに中央と左右の最大点を通る。
+      Swing := Sin(BeatPosition * Speed * Pi);
     Transform.TopOffsetX := Strength * Swing;
     Transform.WaistRatio := 0.35 + EnsureRange(Param1, 0.0, 100.0) * 0.0025;
     Transform.JointFlexibility := EnsureRange(Param2, 0.0, 100.0) / 100.0;
@@ -237,6 +275,7 @@ function IsIdentityTransform(const Transform: TRhythmTransform): Boolean;
 begin
   Result := (Transform.OffsetX = 0) and (Transform.OffsetY = 0) and
     SameValue(Transform.Scale, 1.0) and
+    SameValue(Transform.VerticalScale, 1.0) and
     SameValue(Transform.AngleDegrees, 0) and
     SameValue(Transform.TopOffsetX, 0);
 end;
@@ -302,13 +341,14 @@ end;
 procedure TransformImage(Source, Dest: PPixelArray; Width, Height: Integer;
   const Transform: TRhythmTransform);
 var
-  CenterX, CenterY, CosAngle, DestCenterX, DestCenterY: Double;
+  BottomY, CenterX, CenterY, CosAngle, DestCenterX, DestCenterY: Double;
   DeformedCenterX, DeformedCenterY, HeightRatio, InverseScale: Double;
   Radians, SinAngle, SourcePositionX, SourcePositionY: Double;
   DestX, DestY, SourceX, SourceY: Integer;
 begin
   CenterX := (Width - 1) / 2.0;
   CenterY := (Height - 1) / 2.0;
+  BottomY := Height - 1;
   Radians := DegToRad(Transform.AngleDegrees);
   CosAngle := Cos(Radians);
   SinAngle := Sin(Radians);
@@ -325,6 +365,9 @@ begin
       DeformedCenterY := (-SinAngle * DestCenterX +
         CosAngle * DestCenterY) * InverseScale;
       SourcePositionY := CenterY + DeformedCenterY;
+      if Height > 1 then
+        SourcePositionY := BottomY +
+          (SourcePositionY - BottomY) / Transform.VerticalScale;
       if Height > 1 then
       begin
         HeightRatio := EnsureRange((Height - 1 - SourcePositionY) /
@@ -363,7 +406,8 @@ begin
   if NativeUInt(Width) > High(NativeUInt) div NativeUInt(Height) div
     SizeOf(TPIXEL_RGBA) then
     Exit;
-  if (Transform.Scale <= 0) or IsIdentityTransform(Transform) then
+  if (Transform.Scale <= 0) or (Transform.VerticalScale <= 0) or
+    IsIdentityTransform(Transform) then
     Exit;
 
   BufferSize := NativeUInt(Width) * NativeUInt(Height) * SizeOf(TPIXEL_RGBA);
@@ -373,6 +417,7 @@ begin
     Video^.GetImageData(PPIXEL_RGBA(Source));
     FillChar(Dest^, BufferSize, 0);
     if SameValue(Transform.Scale, 1.0) and
+      SameValue(Transform.VerticalScale, 1.0) and
       SameValue(Transform.AngleDegrees, 0) and
       SameValue(Transform.TopOffsetX, 0) then
       ShiftImage(Source, Dest, Width, Height, Transform.OffsetX,
@@ -392,6 +437,7 @@ var
   Transform: TRhythmTransform;
 begin
   Transform.Scale := 1.0;
+  Transform.VerticalScale := 1.0;
   Transform.AngleDegrees := 0;
   Transform.TopOffsetX := 0;
   Transform.WaistRatio := 0.475;
@@ -462,6 +508,7 @@ begin
   Transform.OffsetX := 0;
   Transform.OffsetY := 0;
   Transform.Scale := CalculateVolumeScale(Level, Strength);
+  Transform.VerticalScale := 1.0;
   Transform.AngleDegrees := 0;
   Transform.TopOffsetX := 0;
   Transform.WaistRatio := 0.475;

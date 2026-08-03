@@ -9,8 +9,9 @@ uses
 
 function TryGetMotionTimeSeconds(Video: PFILTER_PROC_VIDEO;
   out TimeSeconds: Double): Boolean;
-function CalculateAdjustedMotionTime(TimeSeconds, SongShiftSeconds,
-  RhythmShiftSeconds: Double): Double;
+function CalculateOffsetMotionTime(TimeSeconds, OffsetSeconds: Double): Double;
+function CalculateRhythmBeatPosition(BeatPosition,
+  RhythmShiftBeats: Double): Double;
 
 implementation
 
@@ -29,11 +30,17 @@ begin
   Result := not IsNan(TimeSeconds) and not IsInfinite(TimeSeconds);
 end;
 
-function CalculateAdjustedMotionTime(TimeSeconds, SongShiftSeconds,
-  RhythmShiftSeconds: Double): Double;
+function CalculateOffsetMotionTime(TimeSeconds, OffsetSeconds: Double): Double;
 begin
-  // 正のずらしは動きを遅延させ、負のずらしは先行させる。
-  Result := TimeSeconds - SongShiftSeconds - RhythmShiftSeconds;
+  // 正のオフセットは動きを遅延させ、負のオフセットは先行させる。
+  Result := TimeSeconds - OffsetSeconds;
+end;
+
+function CalculateRhythmBeatPosition(BeatPosition,
+  RhythmShiftBeats: Double): Double;
+begin
+  // 秒位置から拍を求めた後に適用し、テンポ変更後も同じ拍数だけずらす。
+  Result := BeatPosition - RhythmShiftBeats;
 end;
 
 end.

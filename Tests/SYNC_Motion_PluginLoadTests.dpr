@@ -32,7 +32,7 @@ type
     Value: Integer;
   end;
   PSelectItem = ^TSelectItem;
-  TSelectItemArray = array[0..5] of TSelectItem;
+  TSelectItemArray = array[0..7] of TSelectItem;
   PSelectItemArray = ^TSelectItemArray;
 
   TSelect = record
@@ -135,20 +135,20 @@ begin
     Items := PItemArray(PPluginTable(Table)^.Items);
     if (Items = nil) or (Items^[20] <> nil) then
       raise Exception.Create('plugin items are not terminated');
-    if string(PItemHeader(Items^[2])^.Name) <> '曲ずらし' then
-      raise Exception.Create('song offset name mismatch');
+    if string(PItemHeader(Items^[2])^.Name) <> 'オフセット (秒)' then
+      raise Exception.Create('offset name mismatch');
     if (PTrackItem(Items^[2])^.Value <> 0.0) or
       (PTrackItem(Items^[2])^.S <> -86400.0) or
       (PTrackItem(Items^[2])^.E <> 86400.0) or
-      (PTrackItem(Items^[2])^.Step <> 1.0) then
-      raise Exception.Create('song offset range mismatch');
-    if string(PItemHeader(Items^[3])^.Name) <> 'ずらし' then
-      raise Exception.Create('sync offset name mismatch');
+      (PTrackItem(Items^[2])^.Step <> 0.01) then
+      raise Exception.Create('offset range mismatch');
+    if string(PItemHeader(Items^[3])^.Name) <> 'リズムずらし (拍)' then
+      raise Exception.Create('rhythm shift name mismatch');
     if (PTrackItem(Items^[3])^.Value <> 0.0) or
-      (PTrackItem(Items^[3])^.S <> -60.0) or
-      (PTrackItem(Items^[3])^.E <> 60.0) or
+      (PTrackItem(Items^[3])^.S <> -4.0) or
+      (PTrackItem(Items^[3])^.E <> 4.0) or
       (PTrackItem(Items^[3])^.Step <> 0.01) then
-      raise Exception.Create('sync offset range mismatch');
+      raise Exception.Create('rhythm shift range mismatch');
     if (string(PItemHeader(Items^[4])^.ItemType) <> 'select') or
       (string(PItemHeader(Items^[4])^.Name) <> 'プリセット') or
       (PSelect(Items^[4])^.Value <> 1) or
@@ -165,9 +165,13 @@ begin
       (PSelect(Items^[7])^.Value <> 1) or
       (string(PSelect(Items^[7])^.List^.Name) <> 'なし') or
       (string(PSelectItemArray(PSelect(Items^[7])^.List)^[3].Name) <>
-        '振り子（2拍）') or
+        'バウンス') or
       (string(PSelectItemArray(PSelect(Items^[7])^.List)^[4].Name) <>
-        '振り子（4拍）') then
+        'ステップ') or
+      (string(PSelectItemArray(PSelect(Items^[7])^.List)^[5].Name) <>
+        '振り子（1拍）') or
+      (string(PSelectItemArray(PSelect(Items^[7])^.List)^[6].Name) <>
+        '振り子（2拍）') then
       raise Exception.Create('rhythm type mismatch');
     if string(PItemHeader(Items^[8])^.Name) <> '強さ' then
       raise Exception.Create('rhythm strength name mismatch');
