@@ -80,6 +80,70 @@ begin
   Result := True;
 end;
 
+function TryCalculateJumpProgress(BeatPosition, Speed: Double;
+  out Progress: Double): Boolean;
+var
+  BeatPhase, DurationBeats: Double;
+begin
+  Result := False;
+  Progress := 0;
+  if Speed <= 0 then
+    Exit;
+
+  // ジャンプは踏み込みと着地を見せるため、既定の速さ2で1拍を使う。
+  // 1拍を超えると次の拍の動作と重なるため、遅い設定でも1拍を上限とする。
+  DurationBeats := Min(1.0, 2.0 / Speed);
+  BeatPhase := BeatPosition - Floor(BeatPosition);
+  if BeatPhase >= DurationBeats then
+    Exit;
+
+  Progress := BeatPhase / DurationBeats;
+  Result := True;
+end;
+
+function SmoothStep(Value: Double): Double;
+begin
+  Value := EnsureRange(Value, 0.0, 1.0);
+  Result := Value * Value * (3.0 - 2.0 * Value);
+end;
+
+function CalculateVerticalJumpCurve(Progress: Double): Double;
+const
+  ANTICIPATION_END = 0.15;
+  TAKEOFF_END      = 0.45;
+  APEX_END         = 0.58;
+  LANDING_END      = 0.85;
+  ANTICIPATION     = 0.08;
+  LANDING_DIP      = 0.06;
+var
+  Phase: Double;
+begin
+  Progress := EnsureRange(Progress, 0.0, 1.0);
+  if Progress < ANTICIPATION_END then
+  begin
+    Phase := Progress / ANTICIPATION_END;
+    Result := ANTICIPATION * SmoothStep(Phase);
+  end
+  else if Progress < TAKEOFF_END then
+  begin
+    Phase := (Progress - ANTICIPATION_END) /
+      (TAKEOFF_END - ANTICIPATION_END);
+    Result := ANTICIPATION + (-1.0 - ANTICIPATION) * SmoothStep(Phase);
+  end
+  else if Progress < APEX_END then
+    Result := -1.0
+  else if Progress < LANDING_END then
+  begin
+    Phase := (Progress - APEX_END) / (LANDING_END - APEX_END);
+    Result := -1.0 + (1.0 + LANDING_DIP) * SmoothStep(Phase);
+  end
+  else
+  begin
+    Phase := (Progress - LANDING_END) / (1.0 - LANDING_END);
+    Result := LANDING_DIP * (1.0 - SmoothStep(Phase));
+  end;
+end;
+
 function CalculateFourBeatPendulumSwing(BeatPosition, Speed: Double): Double;
 var
   Phase: Double;
@@ -151,15 +215,21 @@ begin
     Exit;
   end;
 
-  if not TryCalculateActionProgress(BeatPosition, Speed, Progress) then
-    Exit;
-  // 原位置から滑らかに最大点へ達し、同じ時間で原位置へ戻る放物線。
-  Curve := 4.0 * Progress * (1.0 - Progress);
   case MotionType of
     rmtVerticalJump:
-      Transform.OffsetY := -Round(Strength * Curve);
+      begin
+        if not TryCalculateJumpProgress(BeatPosition, Speed, Progress) then
+          Exit;
+        Transform.OffsetY := Round(Strength *
+          CalculateVerticalJumpCurve(Progress));
+      end;
     rmtShrink:
-      Transform.Scale := 1.0 - Strength * Curve / 400.0;
+      begin
+        if not TryCalculateActionProgress(BeatPosition, Speed, Progress) then
+          Exit;
+        Curve := 4.0 * Progress * (1.0 - Progress);
+        Transform.Scale := 1.0 - Strength * Curve / 400.0;
+      end;
   end;
 end;
 
@@ -169,12 +239,6 @@ begin
     SameValue(Transform.Scale, 1.0) and
     SameValue(Transform.AngleDegrees, 0) and
     SameValue(Transform.TopOffsetX, 0);
-end;
-
-function SmoothStep(Value: Double): Double;
-begin
-  Value := EnsureRange(Value, 0.0, 1.0);
-  Result := Value * Value * (3.0 - 2.0 * Value);
 end;
 
 function CalculatePendulumWeight(HeightRatio, WaistRatio,

@@ -94,7 +94,7 @@ begin
   ClearTestImage;
   TestImageInput[2 * TEST_IMAGE_SIZE + 2].R := 255;
   TestImageInput[2 * TEST_IMAGE_SIZE + 2].A := 255;
-  ApplyRhythmMotion(@Video, rmtVerticalJump, 0.25, 2.0, 1.0);
+  ApplyRhythmMotion(@Video, rmtVerticalJump, 0.45, 2.0, 1.0);
   Require(TestImageWasSet and
     (TestImageOutput[1 * TEST_IMAGE_SIZE + 2].R = 255),
     'vertical jump image mismatch');
@@ -135,7 +135,7 @@ end;
 var
   BadFile, ChangedFile, ConstantFile, TempDir, VelocityFile: string;
   Beat, Bpm, Envelope, Level, NoteNumber, StartFrame, StartSeconds: Double;
-  OffsetX, OffsetY: Integer;
+  FrameIndex, OffsetX, OffsetY, PreviousOffset: Integer;
   Transform: TRhythmTransform;
 begin
   TempDir := TPath.Combine(TPath.GetTempPath, 'SYNC_Motion_TempoTests');
@@ -207,14 +207,35 @@ begin
       Transform);
     Require((Transform.OffsetX = 0) and (Transform.OffsetY = 0),
       'vertical rhythm must start at origin');
-    CalculateRhythmTransform(rmtVerticalJump, 0.25, 2.0, 50.0,
+    CalculateRhythmTransform(rmtVerticalJump, 0.15, 2.0, 50.0,
+      Transform);
+    Require((Transform.OffsetX = 0) and (Transform.OffsetY = 4),
+      'vertical rhythm anticipation mismatch');
+    CalculateRhythmTransform(rmtVerticalJump, 0.45, 2.0, 50.0,
       Transform);
     Require((Transform.OffsetX = 0) and (Transform.OffsetY = -50),
-      'vertical rhythm peak mismatch');
-    CalculateRhythmTransform(rmtVerticalJump, 0.5, 2.0, 50.0,
+      'vertical rhythm takeoff mismatch');
+    CalculateRhythmTransform(rmtVerticalJump, 0.58, 2.0, 50.0,
+      Transform);
+    Require((Transform.OffsetX = 0) and (Transform.OffsetY = -50),
+      'vertical rhythm apex hold mismatch');
+    CalculateRhythmTransform(rmtVerticalJump, 0.85, 2.0, 50.0,
+      Transform);
+    Require((Transform.OffsetX = 0) and (Transform.OffsetY = 3),
+      'vertical rhythm landing dip mismatch');
+    CalculateRhythmTransform(rmtVerticalJump, 1.0, 2.0, 50.0,
       Transform);
     Require((Transform.OffsetX = 0) and (Transform.OffsetY = 0),
-      'vertical rhythm must return to origin');
+      'vertical rhythm must recover before next beat');
+    PreviousOffset := 0;
+    for FrameIndex := 1 to 15 do
+    begin
+      CalculateRhythmTransform(rmtVerticalJump, FrameIndex / 15.0,
+        2.0, 50.0, Transform);
+      Require(Abs(Transform.OffsetY - PreviousOffset) <= 20,
+        'vertical rhythm has an abrupt 30 fps step');
+      PreviousOffset := Transform.OffsetY;
+    end;
     CalculateRhythmTransform(rmtShrink, 0.0, 2.0, 50.0, Transform);
     RequireNear(1.0, Transform.Scale, 'shrink rhythm start');
     CalculateRhythmTransform(rmtShrink, 0.25, 2.0, 50.0, Transform);
