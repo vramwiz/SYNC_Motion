@@ -21,8 +21,6 @@ uses
   SYNC_Motion_TempoMotion;
 
 const
-  PRESET_NONE  = 0;
-  PRESET_BASIC = 1;
   VOLUME_TYPE_NONE      = 0;
   VOLUME_TYPE_EXPANSION = 1;
   PITCH_TYPE_NONE       = 0;
@@ -33,9 +31,6 @@ var
   TempoItem           : TFILTER_ITEM_TRACK;
   OffsetItem          : TFILTER_ITEM_TRACK;
   RhythmShiftItem     : TFILTER_ITEM_TRACK;
-  PresetItem          : TFILTER_ITEM_SELECT;
-  PresetList          : array[0..2] of TFILTER_ITEM_SELECT_ITEM;
-  PresetApplyButton   : TFILTER_ITEM_BUTTON;
   RhythmGroup         : TFILTER_ITEM_GROUP;
   RhythmTypeItem      : TFILTER_ITEM_SELECT;
   RhythmTypeList      : array[0..7] of TFILTER_ITEM_SELECT_ITEM;
@@ -53,84 +48,6 @@ var
   PitchHighPullItem   : TFILTER_ITEM_TRACK;
   PitchLowSinkItem    : TFILTER_ITEM_TRACK;
   PitchBaseNoteItem   : TFILTER_ITEM_TRACK;
-
-procedure ApplyPresetToLocalItems(Preset: Integer);
-begin
-  RhythmSpeedItem.Value := 2.00;
-  RhythmParam1Item.Value := 50.00;
-  RhythmParam2Item.Value := 50.00;
-  PitchBaseNoteItem.Value := 60.00;
-  case Preset of
-    PRESET_BASIC:
-      begin
-        RhythmTypeItem.Value := Ord(rmtVerticalJump);
-        RhythmStrengthItem.Value := 50.00;
-        VolumeTypeItem.Value := VOLUME_TYPE_NONE;
-        VolumeStrengthItem.Value := 0.00;
-        PitchTypeItem.Value := PITCH_TYPE_NONE;
-        PitchHighPullItem.Value := 0.00;
-        PitchLowSinkItem.Value := 0.00;
-      end;
-  else
-    RhythmTypeItem.Value := Ord(rmtNone);
-    RhythmStrengthItem.Value := 0.00;
-    VolumeTypeItem.Value := VOLUME_TYPE_NONE;
-    VolumeStrengthItem.Value := 0.00;
-    PitchTypeItem.Value := PITCH_TYPE_NONE;
-    PitchHighPullItem.Value := 0.00;
-    PitchLowSinkItem.Value := 0.00;
-  end;
-end;
-
-function SetPresetObjectItem(Edit: PEDIT_SECTION; Obj: OBJECT_HANDLE;
-  Item: PWideChar; const Value: UTF8String): Boolean;
-begin
-  Result := False;
-  if (Edit = nil) or (Obj = nil) or not Assigned(Edit^.SetObjectItemValue) then
-    Exit;
-
-  Result := Edit^.SetObjectItemValue(Obj,
-    'SYNC_音楽同期アニメーション_Filter', Item, PAnsiChar(Value)) <> 0;
-end;
-
-procedure ApplyPresetToObject(Edit: PEDIT_SECTION; Obj: OBJECT_HANDLE;
-  Preset: Integer);
-begin
-  if Preset = PRESET_BASIC then
-  begin
-    SetPresetObjectItem(Edit, Obj, 'リズムタイプ', UTF8String('1'));
-    SetPresetObjectItem(Edit, Obj, '強さ', UTF8String('50'));
-  end
-  else
-  begin
-    SetPresetObjectItem(Edit, Obj, 'リズムタイプ', UTF8String('0'));
-    SetPresetObjectItem(Edit, Obj, '強さ', UTF8String('0'));
-  end;
-  SetPresetObjectItem(Edit, Obj, '速さ', UTF8String('2'));
-  SetPresetObjectItem(Edit, Obj, 'Param1', UTF8String('50'));
-  SetPresetObjectItem(Edit, Obj, 'Param2', UTF8String('50'));
-  SetPresetObjectItem(Edit, Obj, '音量タイプ', UTF8String('0'));
-  SetPresetObjectItem(Edit, Obj, '音量強さ', UTF8String('0'));
-  SetPresetObjectItem(Edit, Obj, '音程タイプ', UTF8String('0'));
-  SetPresetObjectItem(Edit, Obj, '高音', UTF8String('0'));
-  SetPresetObjectItem(Edit, Obj, '低音', UTF8String('0'));
-  SetPresetObjectItem(Edit, Obj, '基準音', UTF8String('60'));
-end;
-
-procedure ApplyPresetButton(Edit: PEDIT_SECTION); cdecl;
-var
-  Obj: OBJECT_HANDLE;
-  Preset: Integer;
-begin
-  Preset := PresetItem.Value;
-  ApplyPresetToLocalItems(Preset);
-  if (Edit = nil) or not Assigned(Edit^.GetFocusObject) then
-    Exit;
-
-  Obj := Edit^.GetFocusObject;
-  if Obj <> nil then
-    ApplyPresetToObject(Edit, Obj, Preset);
-end;
 
 procedure ApplySelectedRhythmMotion(Video: PFILTER_PROC_VIDEO;
   BeatPosition: Double);
@@ -213,7 +130,7 @@ begin
 end;
 
 var
-  PluginItems: array[0..20] of Pointer;
+  PluginItems: array[0..18] of Pointer;
   Plugin: TFILTER_PLUGIN_TABLE = (
     Flag: FILTER_FLAG_VIDEO or FILTER_FLAG_FILTER;
     Name: 'SYNC_音楽同期アニメーション_Filter';
@@ -259,20 +176,6 @@ begin
     RhythmShiftItem.S := -4.00;
     RhythmShiftItem.E := 4.00;
     RhythmShiftItem.Step := 0.01;
-
-    PresetList[0].Name := 'なし';
-    PresetList[0].Value := PRESET_NONE;
-    PresetList[1].Name := '基本';
-    PresetList[1].Value := PRESET_BASIC;
-    PresetList[2].Name := nil;
-    PresetList[2].Value := 0;
-    PresetItem.ItemType := 'select';
-    PresetItem.Name := 'プリセット';
-    PresetItem.Value := PRESET_BASIC;
-    PresetItem.List := @PresetList[0];
-    PresetApplyButton.ItemType := 'button';
-    PresetApplyButton.Name := '反映';
-    PresetApplyButton.Callback := ApplyPresetButton;
 
     RhythmGroup.ItemType := 'group';
     RhythmGroup.Name := 'リズム';
@@ -390,23 +293,21 @@ begin
     PluginItems[1] := @TempoItem;
     PluginItems[2] := @OffsetItem;
     PluginItems[3] := @RhythmShiftItem;
-    PluginItems[4] := @PresetItem;
-    PluginItems[5] := @PresetApplyButton;
-    PluginItems[6] := @RhythmGroup;
-    PluginItems[7] := @RhythmTypeItem;
-    PluginItems[8] := @RhythmStrengthItem;
-    PluginItems[9] := @RhythmSpeedItem;
-    PluginItems[10] := @RhythmParam1Item;
-    PluginItems[11] := @RhythmParam2Item;
-    PluginItems[12] := @VolumeGroup;
-    PluginItems[13] := @VolumeTypeItem;
-    PluginItems[14] := @VolumeStrengthItem;
-    PluginItems[15] := @PitchGroup;
-    PluginItems[16] := @PitchTypeItem;
-    PluginItems[17] := @PitchHighPullItem;
-    PluginItems[18] := @PitchLowSinkItem;
-    PluginItems[19] := @PitchBaseNoteItem;
-    PluginItems[20] := nil;
+    PluginItems[4] := @RhythmGroup;
+    PluginItems[5] := @RhythmTypeItem;
+    PluginItems[6] := @RhythmStrengthItem;
+    PluginItems[7] := @RhythmSpeedItem;
+    PluginItems[8] := @RhythmParam1Item;
+    PluginItems[9] := @RhythmParam2Item;
+    PluginItems[10] := @VolumeGroup;
+    PluginItems[11] := @VolumeTypeItem;
+    PluginItems[12] := @VolumeStrengthItem;
+    PluginItems[13] := @PitchGroup;
+    PluginItems[14] := @PitchTypeItem;
+    PluginItems[15] := @PitchHighPullItem;
+    PluginItems[16] := @PitchLowSinkItem;
+    PluginItems[17] := @PitchBaseNoteItem;
+    PluginItems[18] := nil;
     Plugin.Items := @PluginItems[0];
   end;
   Result := @Plugin;

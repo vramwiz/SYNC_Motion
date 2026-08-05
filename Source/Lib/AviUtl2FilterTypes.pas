@@ -8,7 +8,6 @@ interface
 
 type
   LPCWSTR = PWideChar;
-  OBJECT_HANDLE = Pointer;
 
   PSCENE_INFO = ^TSCENE_INFO;
   TSCENE_INFO = record
@@ -57,12 +56,6 @@ type
   TFuncProcVideo = function(Video: PFILTER_PROC_VIDEO): Byte; cdecl;
   TFuncProcAudio = function(Audio: Pointer): Byte; cdecl;
 
-  PEDIT_SECTION = ^TEDIT_SECTION;
-  TFilterItemButtonCallback = procedure(Edit: PEDIT_SECTION); cdecl;
-  TSetObjectItemValueFunc = function(Obj: OBJECT_HANDLE; Effect: LPCWSTR;
-    Item: LPCWSTR; Value: PAnsiChar): Byte; cdecl;
-  TGetFocusObjectFunc = function: OBJECT_HANDLE; cdecl;
-
   // 後続する設定項目を折りたたみ可能なGUIグループへまとめる。
   PFILTER_ITEM_GROUP = ^TFILTER_ITEM_GROUP;
   TFILTER_ITEM_GROUP = record
@@ -95,14 +88,6 @@ type
     List    : ^TFILTER_ITEM_SELECT_ITEM; // nil終端された選択肢配列。
   end;
 
-  // 選択中オブジェクトの設定値を一括変更する編集コールバック付きボタン。
-  PFILTER_ITEM_BUTTON = ^TFILTER_ITEM_BUTTON;
-  TFILTER_ITEM_BUTTON = record
-    ItemType: LPCWSTR;                   // SDK項目種別の固定値 `button`。
-    Name    : LPCWSTR;                   // GUIに表示するボタン名。
-    Callback: TFilterItemButtonCallback; // ボタン押下時に呼ばれる処理。
-  end;
-
   // AviUtl2が選択したファイルパスをValueへ保持するファイル選択項目。
   PFILTER_ITEM_FILE = ^TFILTER_ITEM_FILE;
   TFILTER_ITEM_FILE = record
@@ -110,21 +95,6 @@ type
     Name       : LPCWSTR; // GUI表示名兼、設定取得時の項目識別名。
     Value      : LPCWSTR; // AviUtl2が管理する現在のファイルパス。
     FileFilter : LPCWSTR; // ファイル選択ダイアログ用の二重nil終端フィルター。
-  end;
-
-  // EDIT_SECTIONはSDK上さらに続くが、プリセット反映に必要な位置までを定義する。
-  TEDIT_SECTION = record
-    Info                 : Pointer;
-    CreateObjectFromAlias: Pointer;
-    FindObject           : Pointer;
-    CountObjectEffect    : Pointer;
-    GetObjectLayerFrame  : Pointer;
-    GetObjectAlias       : Pointer;
-    GetObjectItemValue   : Pointer;
-    SetObjectItemValue   : TSetObjectItemValueFunc;
-    MoveObject           : Pointer;
-    DeleteObject         : Pointer;
-    GetFocusObject       : TGetFocusObjectFunc;
   end;
 
   PFILTER_PLUGIN_TABLE = ^TFILTER_PLUGIN_TABLE;
