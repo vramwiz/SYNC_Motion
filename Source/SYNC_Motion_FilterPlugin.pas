@@ -133,7 +133,7 @@ var
   PluginItems: array[0..18] of Pointer;
   Plugin: TFILTER_PLUGIN_TABLE = (
     Flag: FILTER_FLAG_VIDEO or FILTER_FLAG_FILTER;
-    Name: 'SYNC_音楽同期アニメーション_Filter';
+    Name: '音楽同期アニメーション';
     Label_: 'SYNC';
     Information: '音楽に同期して画像を動かすフィルター';
     Items: nil;
